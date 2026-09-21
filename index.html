@@ -310,7 +310,12 @@
 <div class="app">
   <!-- ============ 左側：範本區 ============ -->
   <section class="card col-rail">
-    <header><h2>範本</h2><span class="badge" id="tplCount">0</span></header>
+    <header><h2>範本</h2>
+      <span style="display:flex;gap:6px;align-items:center">
+        <span class="badge" id="tplCount">0</span>
+        <button class="btn sm primary" id="addTplBtn" type="button">＋ 底圖</button>
+      </span>
+    </header>
     <div class="filter-row">
       <select id="catFilter" aria-label="類型篩選"></select>
     </div>
@@ -354,6 +359,7 @@
 <div id="printArea"></div>
 <div id="modalHost"></div>
 <input type="file" id="fileInput" accept="application/json" hidden>
+<input type="file" id="imgInput" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
 
 <script>
 (function(){
@@ -543,35 +549,38 @@ function undo(){
    ========================================================================== */
 
 const store = (()=>{
-  const DB="tu-workshop", STORE="workspace", KEY="current";
+  const DB="tu-workshop", STORE="workspace", UPLOADS="uploads", KEY="current";
   let dbp=null;
   function open(){
     if (dbp) return dbp;
     dbp = new Promise((res,rej)=>{
       let req;
-      try { req = indexedDB.open(DB,1); } catch(e){ rej(e); return; }
-      req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE); };
+      try { req = indexedDB.open(DB,2); } catch(e){ rej(e); return; }
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE))   db.createObjectStore(STORE);
+        if (!db.objectStoreNames.contains(UPLOADS)) db.createObjectStore(UPLOADS);
+      };
       req.onsuccess = ()=> res(req.result);
       req.onerror  = ()=> rej(req.error);
     });
     return dbp;
   }
+  function one(storeName, mode, fn){
+    return open().then(db=> new Promise((res,rej)=>{
+      const tx = db.transaction(storeName, mode);
+      const r = fn(tx.objectStore(storeName));
+      tx.oncomplete = ()=> res(r ? r.result : undefined);
+      tx.onerror = ()=> rej(tx.error);
+    }));
+  }
   return {
-    async get(){
-      const db = await open();
-      return new Promise((res,rej)=>{
-        const r = db.transaction(STORE,"readonly").objectStore(STORE).get(KEY);
-        r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error);
-      });
-    },
-    async put(v){
-      const db = await open();
-      return new Promise((res,rej)=>{
-        const tx = db.transaction(STORE,"readwrite");
-        tx.objectStore(STORE).put(v,KEY);
-        tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
-      });
-    }
+    get:  ()=> one(STORE,"readonly",  s=> s.get(KEY)).then(v=> v||null),
+    put:  (v)=> one(STORE,"readwrite", s=>{ s.put(v,KEY); }),
+    getUpload: (id)=> one(UPLOADS,"readonly",  s=> s.get(id)),
+    putUpload: (id,blob)=> one(UPLOADS,"readwrite", s=>{ s.put(blob,id); }),
+    delUpload: (id)=> one(UPLOADS,"readwrite", s=>{ s.delete(id); }),
+    listUploads: ()=> one(UPLOADS,"readonly", s=> s.getAllKeys())
   };
 })();
 
@@ -603,25 +612,31 @@ function scheduleSave(){
    4. 影像載入（轉 data URI，避免匯出時 canvas 受污染）
    ========================================================================== */
 
+const blobToDataURL = (blob)=> new Promise((res,rej)=>{
+  const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error);
+  fr.readAsDataURL(blob);
+});
+
 async function loadImage(src){
   if (imageCache.has(src)) return imageCache.get(src);
   const p = (async ()=>{
     let href = src;
-    try{
-      const resp = await fetch(src);
-      if (resp.ok){
-        const blob = await resp.blob();
-        href = await new Promise((res,rej)=>{
-          const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error);
-          fr.readAsDataURL(blob);
-        });
-      }
-    }catch(e){ /* file:// 等情境退回直接載入 */ }
+    if (src.indexOf("upload:")===0){
+      const blob = await store.getUpload(src.slice(7));
+      if (!blob) throw new Error("uploaded image missing");
+      href = await blobToDataURL(blob);
+    } else {
+      try{
+        const resp = await fetch(src);
+        if (resp.ok) href = await blobToDataURL(await resp.blob());
+      }catch(e){ /* file:// 等情境退回直接載入 */ }
+    }
     const img = new Image();
     await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=href; });
     return { img, href };
   })();
   imageCache.set(src,p);
+  p.catch(()=> imageCache.delete(src));   // 失敗不要永久快取，重新上傳後才能再試
   return p;
 }
 
@@ -757,6 +772,10 @@ function buildOverlaySVG(){
   (tpl.extraMasks||[]).forEach(m=>{
     out.push(`<rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" fill="none" stroke="#8a93a0" stroke-width="${1.4*k}" stroke-dasharray="${4*k} ${4*k}" pointer-events="none"/>`);
   });
+  if (ws.ui.mode==="set"){
+    const fr = tpl.frameRegion;
+    out.push(`<rect x="${fr.x}" y="${fr.y}" width="${fr.w}" height="${fr.h}" fill="none" stroke="#1d7f4d" stroke-width="${2*k}" stroke-dasharray="${12*k} ${6*k}" pointer-events="none"/>`);
+  }
 
   const f = tpl.fields.find(x=>x.id===sel);
   if (f){
@@ -903,11 +922,16 @@ function renderTemplateList(){
     const b = document.createElement("button");
     b.className="tpl-item"; b.type="button";
     b.setAttribute("aria-current", String(t.id===ws.ui.currentTemplateId));
+    const upload = t.asset.src.indexOf("upload:")===0;
     b.innerHTML =
-      `<img src="${esc(t.asset.src)}" alt="">` +
+      `<img alt=""${upload ? "" : ` src="${esc(t.asset.src)}"`}>` +
       `<span><span class="name">${esc(t.name)}</span><br>` +
       `<span class="meta">${esc(t.typeGroup)}</span><br>` +
       `<span class="count">可填尺寸 ${t.fields.length}</span></span>`;
+    if (upload){   // upload: 不是瀏覽器認得的網址，要先解析成 data URI
+      const im = b.querySelector("img");
+      loadImage(t.asset.src).then(r=>{ im.src = r.href; }).catch(()=>{ im.alt = "底圖遺失"; });
+    }
     b.addEventListener("click", ()=> switchTemplate(t.id));
     li.appendChild(b); list.appendChild(li);
   });
@@ -1033,6 +1057,10 @@ function renderSetPanel(){
         `<button class="btn sm" id="maskOnlyBtn" type="button">框選額外遮罩</button>`+
       `</div>`+
       `<div class="nudge">`+
+        `<button class="btn sm" id="frameBtn" type="button">框選圖框範圍</button>`+
+        `<button class="btn sm" id="rmTplBtn" type="button">移除此範本</button>`+
+      `</div>`+
+      `<div class="nudge">`+
         `<button class="btn sm" id="saveTplBtn" type="button">保存範本新版</button>`+
         `<button class="btn sm" id="fromTplBtn" type="button">依已存範本建立新草稿</button>`+
       `</div>`+
@@ -1043,6 +1071,8 @@ function renderSetPanel(){
 
   $("marqueeBtn").addEventListener("click", ()=> startMarquee("field"));
   $("maskOnlyBtn").addEventListener("click", ()=> startMarquee("mask"));
+  $("frameBtn").addEventListener("click", ()=> startMarquee("frame"));
+  $("rmTplBtn").addEventListener("click", removeTemplate);
   $("saveTplBtn").addEventListener("click", saveTemplateVersion);
   $("fromTplBtn").addEventListener("click", newDraftFromTemplate);
 
@@ -1281,14 +1311,24 @@ function renderBadges(){
   if (r.missing.length) bits.push(`<span class="badge warn">必填未完成 ${r.missing.length}</span>`);
   else bits.push(`<span class="badge ok">必填已完成</span>`);
   if (ws.ui.compare) bits.push(`<span class="badge info">原圖對照中（輸出仍為衍生圖）</span>`);
-  if (marqueeMode) bits.push(`<span class="badge info">框選中：拖出範圍後自動辨識格式，Esc 取消</span>`);
+  if (marqueeMode==="frame") bits.push(`<span class="badge info">框選圖框範圍：框住原圖下方要被蓋掉的標題欄，Esc 取消</span>`);
+  else if (marqueeMode==="mask") bits.push(`<span class="badge info">框選額外遮罩：框住要蓋掉的舊內容，Esc 取消</span>`);
+  else if (marqueeMode) bits.push(`<span class="badge info">框選中：拖出範圍後自動辨識格式，Esc 取消</span>`);
   else bits.push(`<span class="badge">點標註可選取 · 拖曳移動 · 控制點改遮罩 · 方向鍵微調 · 雙擊改值 · Ctrl+滾輪縮放</span>`);
   host.innerHTML = bits.join("");
 }
 
 function renderAll(){
-  renderCategories(); renderTemplateList(); renderPanel(); renderPreview(); renderBadges();
+  renderCategories(); renderTemplateList();
   $("undoBtn").disabled = undoStack.length===0;
+  if (!curDraft()){
+    $("panel").innerHTML = `<div class="empty-note">目前沒有範本。按右上角「＋ 底圖」上傳一張圖面開始。</div>`;
+    $("sheetWrap").innerHTML = ""; $("sheetWrap").style.width = "auto";
+    $("pvTitle").textContent = "—";
+    $("badgeRow").innerHTML = `<span class="badge">尚無範本</span>`;
+    return;
+  }
+  renderPanel(); renderPreview(); renderBadges();
 }
 
 /* ==========================================================================
@@ -1609,6 +1649,12 @@ async function finishMarquee(){
     renderPanel(); renderPreview(); scheduleSave();
     return;
   }
+  if (kind==="frame"){
+    checkpoint();
+    draftTpl().frameRegion = { x, y, w, h };
+    renderPanel(); renderPreview(); scheduleSave();
+    return;
+  }
   const ink = await getInk(draftTpl());
   detected = ink ? analyzeRegion(ink, {x,y,w,h}) : null;
   renderOverlay(); renderBadges();
@@ -1814,6 +1860,125 @@ function openNewFieldDialog(det){
     d.updatedAt=now();
     ws.ui.selectedFieldId=id;
     done(); renderPanel(); renderPreview(); renderBadges(); scheduleSave();
+  });
+}
+
+/* ==========================================================================
+   9b. 上傳底圖 → 建立新範本
+   ========================================================================== */
+const MAX_UPLOAD = 25*1024*1024;
+
+function openAddTemplate(){
+  const groups = Array.from(new Set(Object.values(ws.templates).map(t=>t.typeGroup)));
+  openModal("新增底圖",
+    `<div class="msg info">選一張圖面當底圖，建立一筆新範本。建立後用「設定範本 → 框選新尺寸」`+
+    `逐一建立可填欄位，不需要改程式。<br>`+
+    `支援 PNG／JPEG／WebP。<b>TIF 瀏覽器無法直接讀取</b>，請先批次轉成 JPEG 再上傳。</div>`+
+    `<div class="set-body" style="padding:0">`+
+      `<button class="btn" type="button" id="atPick">選擇圖檔…</button>`+
+      `<div class="prefix-hint" id="atFileInfo">尚未選擇檔案</div>`+
+      `<div class="g2">`+
+        `<div><label for="at-name">圖面名稱／圖號</label><input id="at-name" type="text" placeholder="例如 D4P001000003"></div>`+
+        `<div><label for="at-group">類型群組</label><input id="at-group" type="text" list="atGroups" placeholder="例如 錐尖頂針 P">`+
+          `<datalist id="atGroups">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>`+
+      `</div>`+
+      `<div><label for="at-material">材質（填入試作圖框）</label><input id="at-material" type="text" placeholder="例如 碳化鎢 VA70 1PC ／ 模殼 SKD11 1PC"></div>`+
+    `</div>`,
+    `<button class="btn" type="button" id="atCancel">取消</button>`+
+    `<button class="btn primary" type="button" id="atOk" disabled>建立範本</button>`);
+
+  let picked = null;   // {blob, w, h, name}
+  $("atCancel").addEventListener("click", closeModal);
+  $("atPick").addEventListener("click", ()=> $("imgInput").click());
+
+  $("imgInput").onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    const info = $("atFileInfo");
+    if (/tiff?$/i.test(f.name) || f.type==="image/tiff"){
+      info.innerHTML = `<span style="color:var(--warn)">TIF 無法直接使用，請先轉成 JPEG 或 PNG。</span>`;
+      return;
+    }
+    if (f.size > MAX_UPLOAD){
+      info.innerHTML = `<span style="color:var(--warn)">檔案 ${(f.size/1048576).toFixed(1)}MB 超過 25MB 上限。</span>`;
+      return;
+    }
+    info.textContent = "讀取中…";
+    try{
+      const url = await blobToDataURL(f);
+      const img = new Image();
+      await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=url; });
+      picked = { blob:f, w:img.naturalWidth, h:img.naturalHeight, name:f.name };
+      info.innerHTML = `${esc(f.name)}　${img.naturalWidth} × ${img.naturalHeight} px　${(f.size/1024).toFixed(0)}KB`
+        + (img.naturalWidth*img.naturalHeight > 40e6 ? `<br><span style="color:var(--warn)">影像很大，輸出與縮放會比較慢。</span>` : "");
+      if (!$("at-name").value) $("at-name").value = f.name.replace(/\.[^.]+$/,"");
+      $("atOk").disabled = false;
+    }catch(err){
+      info.innerHTML = `<span style="color:var(--warn)">這個檔案無法解碼，請換成 JPEG 或 PNG。</span>`;
+      picked = null; $("atOk").disabled = true;
+    }
+  };
+
+  $("atOk").addEventListener("click", async ()=>{
+    if (!picked) return;
+    const name = ($("at-name").value.trim() || picked.name.replace(/\.[^.]+$/,""));
+    const group = $("at-group").value.trim() || "未分類";
+    const uploadId = uid("img");
+    try{ await store.putUpload(uploadId, picked.blob); }
+    catch(err){ toast("圖檔存入本機失敗："+(err&&err.message||"未知錯誤"),"warn"); return; }
+    checkpoint();
+    const t = {
+      id: uid("tpl"), name, typeGroup: group, typeCode: "",
+      asset: { src:"upload:"+uploadId, w:picked.w, h:picked.h },
+      info: { drawNo:name, material:$("at-material").value.trim(), rev:"R0", note:"" },
+      // 預設圖框放在圖面下緣，之後可用「框選圖框範圍」調整
+      frameRegion: { x:Math.round(picked.w*0.03), y:Math.round(picked.h*0.855),
+                     w:Math.round(picked.w*0.94), h:Math.round(picked.h*0.125) },
+      extraMasks: [], fields: [], version: 1
+    };
+    ws.templates[t.id] = t;
+    ws.drafts[t.id] = newDraft(t);
+    ws.ui.currentTemplateId = t.id;
+    ws.ui.selectedFieldId = null;
+    ws.ui.category = "全部";
+    ws.ui.mode = "set";
+    closeModal(); renderAll(); scheduleSave();
+    toast("範本已建立。接著用「框選新尺寸」建立可填欄位，並用「框選圖框範圍」確認試作圖框的位置。","ok");
+  });
+}
+
+function removeTemplate(){
+  const t = curTpl();
+  const snaps = ws.saved.filter(s=>s.draft.templateId===t.id).length;
+  openModal("移除範本",
+    `<div class="msg warn">將移除範本「${esc(t.name)}」、它的工作草稿`+
+    (snaps?`，以及 ${snaps} 筆已存圖面`:"")+
+    `。可用「復原」返回。</div>`+
+    (t.asset.src.indexOf("upload:")===0
+      ? `<div class="msg info">上傳的底圖檔也會一併從本機刪除。</div>`
+      : `<div class="msg info">內建底圖檔不會刪除，清空本機資料後會重新出現。</div>`),
+    `<button class="btn" type="button" id="rtCancel">取消</button><button class="btn primary" type="button" id="rtOk">移除</button>`);
+  $("rtCancel").addEventListener("click", closeModal);
+  $("rtOk").addEventListener("click", async ()=>{
+    checkpoint();
+    const id = t.id, src = t.asset.src;
+    delete ws.templates[id];
+    delete ws.drafts[id];
+    ws.saved = ws.saved.filter(s=>s.draft.templateId!==id);
+    const rest = Object.keys(ws.templates);
+    if (!rest.length){
+      closeModal();
+      toast("已移除最後一筆範本，請先新增底圖。","info");
+      ws.ui.currentTemplateId = null;
+      renderAll(); scheduleSave();
+      return;
+    }
+    ws.ui.currentTemplateId = rest[0];
+    ws.ui.selectedFieldId = draftTpl().fields[0]?.id || null;
+    if (src.indexOf("upload:")===0){ try{ await store.delUpload(src.slice(7)); }catch(e){} }
+    imageCache.delete(src); inkCache.delete(src);
+    closeModal(); renderAll(); scheduleSave();
   });
 }
 
@@ -2108,6 +2273,7 @@ $("fileInput").addEventListener("change", async (e)=>{
    ========================================================================== */
 $("tabFill").addEventListener("click", ()=>{ if(ws.ui.mode==="fill")return; ws.ui.mode="fill"; cancelMarquee(); renderPanel(); renderPreview(); scheduleSave(); });
 $("tabSet").addEventListener("click", ()=>{ if(ws.ui.mode==="set")return; ws.ui.mode="set"; renderPanel(); renderPreview(); scheduleSave(); });
+$("addTplBtn").addEventListener("click", openAddTemplate);
 $("catFilter").addEventListener("change", (e)=>{ ws.ui.category=e.target.value; renderTemplateList(); scheduleSave(); });
 $("compareChk").addEventListener("change", (e)=>{ ws.ui.compare=e.target.checked; renderPreview(); renderBadges(); scheduleSave(); });
 $("zoomIn").addEventListener("click", ()=> setZoom(ws.ui.zoom+0.25));
