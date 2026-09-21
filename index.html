@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>圖面工坊</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
 <style>
@@ -206,11 +207,47 @@
   .zoomctl .z{ font-family:"IBM Plex Mono",monospace; font-size:11.5px; min-width:44px; text-align:center; color:var(--ink-dim); }
   .stage{
     overflow:auto; background:var(--surface-3); padding:14px;
-    max-height:74vh; display:flex; justify-content:center;
+    max-height:74vh; display:flex; justify-content:safe center; overscroll-behavior:contain;
   }
-  .sheet-wrap{ position:relative; flex:none; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.18); }
+  .sheet-wrap{ position:relative; flex:none; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.18);
+    cursor:grab; touch-action:none; }
   .sheet-wrap svg{ display:block; }
   .sheet-wrap.marquee-on{ cursor:crosshair; }
+  .sheet-wrap.panning{ cursor:grabbing; }
+  #overlay .ov-mask{ cursor:move; }
+  #overlay .ov-text, #overlay .ov-anchor{ cursor:move; }
+  #overlay .ov-font{ cursor:nwse-resize; }
+  #overlay .ov-handle[data-handle="nw"], #overlay .ov-handle[data-handle="se"]{ cursor:nwse-resize; }
+  #overlay .ov-handle[data-handle="ne"], #overlay .ov-handle[data-handle="sw"]{ cursor:nesw-resize; }
+  #overlay .ov-handle[data-handle="n"],  #overlay .ov-handle[data-handle="s"]{ cursor:ns-resize; }
+  #overlay .ov-handle[data-handle="e"],  #overlay .ov-handle[data-handle="w"]{ cursor:ew-resize; }
+
+  /* 浮動工具列 */
+  .fab{
+    position:absolute; transform:translateX(-50%); z-index:5;
+    display:flex; align-items:center; gap:2px; padding:3px;
+    background:var(--surface); border:1px solid var(--border-strong);
+    border-radius:7px; box-shadow:0 4px 14px rgba(0,0,0,.22);
+    white-space:nowrap;
+  }
+  .fab button{
+    border:none; background:transparent; color:var(--ink);
+    font-size:11.5px; font-weight:700; padding:4px 7px; border-radius:5px; cursor:pointer;
+    font-family:"IBM Plex Sans",sans-serif; line-height:1.1;
+  }
+  .fab button:hover{ background:var(--accent-soft); color:var(--accent); }
+  .fab .sep{ width:1px; height:16px; background:var(--border); display:inline-block; }
+  .inline-edit{
+    position:absolute; transform:translate(-50%,-50%); z-index:6; width:110px;
+    text-align:center; font-family:"IBM Plex Mono",monospace; font-weight:600;
+    border:2px solid var(--accent); border-radius:5px; padding:2px 4px;
+    background:var(--surface); color:var(--ink);
+  }
+
+  /* 已改動標記 */
+  .dot-changed{ width:7px; height:7px; border-radius:50%; background:var(--accent); display:inline-block; flex:none; }
+  .revert{ border:none; background:transparent; color:var(--accent); font-size:10.5px;
+    font-weight:700; cursor:pointer; padding:0 2px; text-decoration:underline; }
   .badge-row{ display:flex; gap:6px; flex-wrap:wrap; padding:8px 12px; border-top:1px solid var(--border); }
   .badge{ font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:999px;
     background:var(--surface-2); border:1px solid var(--border); color:var(--ink-dim); }
@@ -645,9 +682,9 @@ function buildFrame(region, info, tpl){
 function buildPlan(draft, opts){
   const tpl = draft.template;
   const masks = [];
-  (tpl.extraMasks||[]).forEach(m=> masks.push([m.x,m.y,m.w,m.h]));
-  tpl.fields.forEach(f=> masks.push([f.mask.x,f.mask.y,f.mask.w,f.mask.h]));
-  const texts = tpl.fields.map(f=> fieldTextBlock(f, draft.values[f.id]||{}));
+  (tpl.extraMasks||[]).forEach(m=> masks.push({ id:m.id, kind:"extra", x:m.x, y:m.y, w:m.w, h:m.h }));
+  tpl.fields.forEach(f=> masks.push({ id:f.id, kind:"field", x:f.mask.x, y:f.mask.y, w:f.mask.w, h:f.mask.h }));
+  const texts = tpl.fields.map(f=> Object.assign({ fid:f.id }, fieldTextBlock(f, draft.values[f.id]||{})));
   return {
     asset: tpl.asset,
     masks,
@@ -660,21 +697,25 @@ function buildPlan(draft, opts){
 /* ---------- SVG 預覽 ---------- */
 const esc = (s)=> String(s).replace(/[&<>"]/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
 
-function planToSVG(plan, href, editor){
+function textItemsSVG(t){
+  return t.items.filter(i=>i.text).map(it=>
+    `<text x="${it.dx}" y="${it.dy}" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="${it.size}"`+
+    ` font-weight="${it.weight}" fill="#101010" text-anchor="${it.align==="left"?"start":"middle"}"`+
+    ` dominant-baseline="central">${esc(it.text)}</text>`
+  ).join("");
+}
+
+// 圖面本體（輸出所見即所得）；互動用的控制點畫在另一層 overlay
+function buildSheetSVG(plan, href){
   const {w,h} = plan.asset;
   const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`);
+  out.push(`<svg id="sheetSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`);
   out.push(`<image href="${esc(href)}" x="0" y="0" width="${w}" height="${h}"/>`);
   if (!plan.original){
-    plan.masks.forEach(m=> out.push(`<rect x="${m[0]}" y="${m[1]}" width="${m[2]}" height="${m[3]}" fill="#ffffff"/>`));
-    plan.texts.forEach(t=>{
-      out.push(`<g transform="translate(${t.x} ${t.y}) rotate(${t.rotate})">`);
-      t.items.forEach(it=>{
-        if (!it.text) return;
-        out.push(`<text x="${it.dx}" y="${it.dy}" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="${it.size}" font-weight="${it.weight}" fill="#101010" text-anchor="${it.align==="left"?"start":"middle"}" dominant-baseline="central">${esc(it.text)}</text>`);
-      });
-      out.push(`</g>`);
-    });
+    plan.masks.forEach(m=>
+      out.push(`<rect id="mask-${esc(m.id)}" x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" fill="#ffffff"/>`));
+    plan.texts.forEach(t=>
+      out.push(`<g id="txt-${esc(t.fid)}" transform="translate(${t.x} ${t.y}) rotate(${t.rotate})">${textItemsSVG(t)}</g>`));
     const fr = plan.frame;
     out.push(`<rect x="${fr.rect[0]}" y="${fr.rect[1]}" width="${fr.rect[2]}" height="${fr.rect[3]}" fill="#ffffff" stroke="#101010" stroke-width="3"/>`);
     fr.cells.forEach(cell=>{
@@ -684,21 +725,97 @@ function planToSVG(plan, href, editor){
       out.push(`<text x="${cx+12}" y="${cy+63}" font-family="IBM Plex Mono, monospace" font-size="29" font-weight="600" fill="#101010">${esc(clipText(cell.v, cw-24, 29))}</text>`);
     });
   }
-  if (editor){
-    plan.masks.forEach(m=> out.push(`<rect x="${m[0]}" y="${m[1]}" width="${m[2]}" height="${m[3]}" fill="none" stroke="#2b5f8f" stroke-width="2" stroke-dasharray="8 5"/>`));
-    plan.texts.forEach(t=> out.push(`<circle cx="${t.x}" cy="${t.y}" r="7" fill="#e07b1f" stroke="#ffffff" stroke-width="2"/>`));
-  }
-  if (editor && editor.selectedMask){
-    const m = editor.selectedMask;
-    out.push(`<rect x="${m.x-6}" y="${m.y-6}" width="${m.w+12}" height="${m.h+12}" fill="none" stroke="#b85c10" stroke-width="4"/>`);
-  }
-  if (editor && editor.marquee){
-    const q = editor.marquee;
-    const x=Math.min(q.x0,q.x1), y=Math.min(q.y0,q.y1), mw=Math.abs(q.x1-q.x0), mh=Math.abs(q.y1-q.y0);
-    out.push(`<rect id="marqueeRect" x="${x}" y="${y}" width="${mw}" height="${mh}" fill="rgba(184,92,16,.16)" stroke="#b85c10" stroke-width="3"/>`);
-  }
+  out.push(`<g id="overlay"></g>`);
   out.push(`</svg>`);
   return out.join("");
+}
+
+const HANDLES = [["nw",0,0],["n",.5,0],["ne",1,0],["e",1,.5],["se",1,1],["s",.5,1],["sw",0,1],["w",0,.5]];
+
+// overlay：遮罩虛線框、必填未填標記、選取框與控制點、框選中的橡皮筋
+function buildOverlaySVG(){
+  if (ws.ui.compare) return "";
+  const tpl = draftTpl(), d = curDraft();
+  const sel = ws.ui.selectedFieldId;
+  const k = 1/Math.max(ws.ui.zoom, .25);      // 讓控制點在任何縮放下都維持相同螢幕大小
+  const out = [];
+
+  tpl.fields.forEach(f=>{
+    const v = d.values[f.id]||{};
+    const missing = f.required && !String(v.value||"").trim();
+    const changed = String(v.value||"") !== String(f.defaultValue||"");
+    const color = missing ? "#c0341b" : (f.id===sel ? "#b85c10" : "#3f7cb8");
+    out.push(`<rect class="ov-mask" data-fid="${esc(f.id)}" x="${f.mask.x}" y="${f.mask.y}" width="${f.mask.w}" height="${f.mask.h}"`+
+      ` fill="transparent" stroke="${color}" stroke-width="${(missing?3:1.6)*k}" stroke-dasharray="${8*k} ${5*k}"/>`);
+    if (missing){
+      out.push(`<rect x="${f.mask.x}" y="${f.mask.y}" width="${f.mask.w}" height="${f.mask.h}" fill="#c0341b" fill-opacity=".10" pointer-events="none"/>`);
+    }
+    if (changed && !missing){
+      out.push(`<circle cx="${f.mask.x+f.mask.w}" cy="${f.mask.y}" r="${5*k}" fill="#b85c10" stroke="#fff" stroke-width="${1.5*k}" pointer-events="none"/>`);
+    }
+  });
+  (tpl.extraMasks||[]).forEach(m=>{
+    out.push(`<rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" fill="none" stroke="#8a93a0" stroke-width="${1.4*k}" stroke-dasharray="${4*k} ${4*k}" pointer-events="none"/>`);
+  });
+
+  const f = tpl.fields.find(x=>x.id===sel);
+  if (f){
+    const t = fieldTextBlock(f, d.values[f.id]||{});
+    // 文字拖曳把手：貼著實際文字範圍，避免蓋住旁邊的欄位
+    const ext = textExtent(t), pad = 4;
+    out.push(`<g transform="translate(${t.x} ${t.y}) rotate(${t.rotate})">`+
+      `<rect class="ov-text" data-fid="${esc(f.id)}" x="${ext.x0-pad}" y="${ext.y0-pad}"`+
+      ` width="${ext.x1-ext.x0+pad*2}" height="${ext.y1-ext.y0+pad*2}" fill="transparent" stroke="#b85c10"`+
+      ` stroke-width="${1.2*k}" stroke-dasharray="${3*k} ${3*k}"/></g>`);
+    out.push(`<circle class="ov-anchor" data-fid="${esc(f.id)}" cx="${t.x}" cy="${t.y}" r="${6*k}" fill="#e07b1f" stroke="#fff" stroke-width="${2*k}"/>`);
+    // 遮罩選取框與八個控制點
+    out.push(`<rect x="${f.mask.x}" y="${f.mask.y}" width="${f.mask.w}" height="${f.mask.h}" fill="none" stroke="#b85c10" stroke-width="${2.4*k}" pointer-events="none"/>`);
+    const s = 9*k;
+    HANDLES.forEach(([name,fx,fy])=>{
+      const hx = f.mask.x + f.mask.w*fx, hy = f.mask.y + f.mask.h*fy;
+      out.push(`<rect class="ov-handle" data-handle="${name}" data-fid="${esc(f.id)}" x="${hx-s/2}" y="${hy-s/2}"`+
+        ` width="${s}" height="${s}" fill="#ffffff" stroke="#b85c10" stroke-width="${1.8*k}"/>`);
+    });
+    // 字級把手
+    const fh = fontHandlePos(f, t);
+    out.push(`<circle class="ov-font" data-fid="${esc(f.id)}" cx="${fh.x}" cy="${fh.y}" r="${7*k}" fill="#2b5f8f" stroke="#fff" stroke-width="${2*k}"/>`);
+  }
+
+  if (marquee){
+    const q = marquee;
+    const x=Math.min(q.x0,q.x1), y=Math.min(q.y0,q.y1), mw=Math.abs(q.x1-q.x0), mh=Math.abs(q.y1-q.y0);
+    out.push(`<rect id="marqueeRect" x="${x}" y="${y}" width="${mw}" height="${mh}" fill="rgba(184,92,16,.16)" stroke="#b85c10" stroke-width="${3*k}" pointer-events="none"/>`);
+  }
+  if (detected){
+    out.push(`<rect x="${detected.mask.x}" y="${detected.mask.y}" width="${detected.mask.w}" height="${detected.mask.h}"`+
+      ` fill="rgba(43,95,143,.12)" stroke="#2b5f8f" stroke-width="${2.5*k}" pointer-events="none"/>`);
+    if (detected.tolBox){
+      out.push(`<rect x="${detected.tolBox.x}" y="${detected.tolBox.y}" width="${detected.tolBox.w}" height="${detected.tolBox.h}"`+
+        ` fill="none" stroke="#1d7f4d" stroke-width="${2*k}" stroke-dasharray="${5*k} ${4*k}" pointer-events="none"/>`);
+    }
+  }
+  return out.join("");
+}
+
+// 文字區塊在自身座標系的範圍（含公差）
+function textExtent(t){
+  let x0=0, x1=0, y0=0, y1=0;
+  t.items.forEach(it=>{
+    if (!it.text) return;
+    const w = measure(it.text, it.size, it.weight);
+    const ax0 = (it.align==="left") ? it.dx : it.dx - w/2;
+    x0 = Math.min(x0, ax0); x1 = Math.max(x1, ax0 + w);
+    y0 = Math.min(y0, it.dy - it.size*0.62); y1 = Math.max(y1, it.dy + it.size*0.62);
+  });
+  if (x1<=x0){ x0=-10; x1=10; y0=-10; y1=10; }
+  return { x0, x1, y0, y1 };
+}
+
+// 字級把手落在文字區塊右下角（隨方向旋轉）
+function fontHandlePos(f, t){
+  const dx = f.fontSize*2.0, dy = f.fontSize*0.95;
+  const r = (t.rotate||0)*Math.PI/180;
+  return { x: t.x + dx*Math.cos(r) - dy*Math.sin(r), y: t.y + dx*Math.sin(r) + dy*Math.cos(r) };
 }
 
 function clipText(text, maxW, size){
@@ -717,7 +834,7 @@ function planToCanvas(plan, img){
   ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,w,h);
   ctx.drawImage(img,0,0,w,h);
   ctx.fillStyle="#ffffff";
-  plan.masks.forEach(m=> ctx.fillRect(m[0],m[1],m[2],m[3]));
+  plan.masks.forEach(m=> ctx.fillRect(m.x,m.y,m.w,m.h));
   ctx.fillStyle="#101010";
   plan.texts.forEach(t=>{
     ctx.save();
@@ -802,7 +919,8 @@ function switchTemplate(id){
   ws.ui.currentTemplateId = id;
   ws.ui.selectedFieldId = draftTpl().fields[0]?.id || null;
   ws.ui.compare = false;
-  marquee = null;
+  marquee = null; marqueeMode = null; detected = null; drag = null; inlineFid = null;
+  $("sheetWrap").classList.remove("marquee-on","panning");
   renderAll(); scheduleSave();
 }
 
@@ -825,17 +943,30 @@ function renderFillPanel(){
     row.className="dim-row";
     row.dataset.fieldrow = f.id;
     row.dataset.sel = String(ws.ui.selectedFieldId===f.id);
+    const changed = String(v.value||"") !== String(f.defaultValue||"")
+      || String(v.tolUpper||"") !== String(f.defaultTolUpper||"")
+      || String(v.tolLower||"") !== String(f.defaultTolLower||"");
     row.innerHTML =
-      `<div class="top"><span class="lbl">${esc(f.label)} ${f.required?'<span class="req">必填</span>':''}</span>`+
-      `<span class="fid">${esc(f.id)}</span></div>`+
+      `<div class="top"><span class="lbl">${changed?'<span class="dot-changed"></span> ':''}${esc(f.label)} ${f.required?'<span class="req">必填</span>':''}</span>`+
+      `<span class="fid">${changed?`<button class="revert" type="button" data-revert="${esc(f.id)}">還原</button> `:''}${esc(f.id)}</span></div>`+
       `<div class="dim-grid">`+
         `<div><label for="v-${f.id}">尺寸（${esc(f.unit)}）</label><input id="v-${f.id}" type="text" value="${esc(v.value)}"></div>`+
         `<div><label for="tu-${f.id}">上公差</label><input id="tu-${f.id}" type="text" value="${esc(v.tolUpper)}"></div>`+
         `<div><label for="tl-${f.id}">下公差</label><input id="tl-${f.id}" type="text" value="${esc(v.tolLower)}"></div>`+
       `</div>`+
       (f.prefix?`<div class="prefix-hint">圖面顯示前綴「${esc(f.prefix)}」，輸入值不需重複加入。</div>`:``);
-    row.addEventListener("mousedown", ()=>{ selectField(f.id); });
+    row.addEventListener("mousedown", (e)=>{ if (!e.target.closest(".revert")) selectField(f.id); });
     host.appendChild(row);
+    const rev = row.querySelector("[data-revert]");
+    if (rev) rev.addEventListener("click", ()=>{
+      checkpoint();
+      const dd = curDraft();
+      dd.values[f.id] = { value:f.defaultValue, tolUpper:f.defaultTolUpper, tolLower:f.defaultTolLower };
+      dd.updatedAt = now();
+      updateFieldDOM(f.id);
+      const sp=$("panel").scrollTop; renderPanel(); $("panel").scrollTop=sp;
+      renderOverlay(); renderBadges(); scheduleSave();
+    });
 
     const vi=$("v-"+f.id), tu=$("tu-"+f.id), tl=$("tl-"+f.id);
     if (f.required && !String(v.value||"").trim()) vi.classList.add("empty-required");
@@ -847,7 +978,7 @@ function renderFillPanel(){
         dd.values[f.id][key] = el.value;
         dd.updatedAt = now();
         if (key==="value") vi.classList.toggle("empty-required", f.required && !el.value.trim());
-        renderPreview(); renderBadges(); scheduleSave();
+        updateFieldDOM(f.id); renderOverlay(); renderBadges(); scheduleSave();
       });
     });
   });
@@ -883,7 +1014,7 @@ function selectField(id){
   document.querySelectorAll("[data-fieldrow]").forEach(r=>{
     r.dataset.sel = String(r.dataset.fieldrow===id);
   });
-  renderPreview(); scheduleSave();
+  renderOverlay(); scheduleSave();
 }
 
 /* ---------- 設定範本 ---------- */
@@ -905,7 +1036,8 @@ function renderSetPanel(){
         `<button class="btn sm" id="saveTplBtn" type="button">保存範本新版</button>`+
         `<button class="btn sm" id="fromTplBtn" type="button">依已存範本建立新草稿</button>`+
       `</div>`+
-      `<div class="prefix-hint">框選只記錄位置，不辨識框內數字；舊值仍需人工輸入。遮罩請避開尺寸線與輪廓。</div>`+
+      `<div class="prefix-hint">框個大概就好：系統會自動貼齊墨跡邊界，並判斷方向、字級與公差位置。`+
+      `<b>不辨識數字內容</b>，舊值仍需人工輸入。建立後可直接在圖上拖曳調整。</div>`+
     `</div>`;
   host.appendChild(bar);
 
@@ -1086,6 +1218,38 @@ function renderPanel(){
 
 /* ---------- 預覽 ---------- */
 let previewToken = 0;
+
+function applyZoomSize(){
+  const tpl = draftTpl();
+  const svg = $("sheetSvg"); if (!svg) return;
+  const w = Math.round(tpl.asset.w*ws.ui.zoom), h = Math.round(tpl.asset.h*ws.ui.zoom);
+  svg.setAttribute("width", w); svg.setAttribute("height", h);
+  $("sheetWrap").style.width = w+"px";
+  $("sheetWrap").style.height = h+"px";
+}
+
+function renderOverlay(){
+  const g = $("overlay");
+  if (g) g.innerHTML = buildOverlaySVG();
+  positionFab();
+}
+
+// 只更新單一欄位的遮罩與文字，不重建整張圖（拖曳時用）
+function updateFieldDOM(fid){
+  const f = draftTpl().fields.find(x=>x.id===fid); if (!f) return;
+  const rect = document.getElementById("mask-"+fid);
+  if (rect){
+    rect.setAttribute("x", f.mask.x); rect.setAttribute("y", f.mask.y);
+    rect.setAttribute("width", f.mask.w); rect.setAttribute("height", f.mask.h);
+  }
+  const g = document.getElementById("txt-"+fid);
+  if (g){
+    const t = fieldTextBlock(f, curDraft().values[fid]||{});
+    g.setAttribute("transform", `translate(${t.x} ${t.y}) rotate(${t.rotate})`);
+    g.innerHTML = textItemsSVG(t);
+  }
+}
+
 async function renderPreview(){
   const token = ++previewToken;
   const d = curDraft(), tpl = d.template;
@@ -1100,17 +1264,9 @@ async function renderPreview(){
   if (token!==previewToken) return;
 
   const plan = buildPlan(d, { original: !!ws.ui.compare });
-  const editor = (ws.ui.mode==="set" && !ws.ui.compare) ? {
-    selectedMask: (tpl.fields.find(f=>f.id===ws.ui.selectedFieldId)||{}).mask,
-    marquee
-  } : (marquee ? { marquee } : null);
-
-  wrap.innerHTML = planToSVG(plan, href, editor);
-  const svg = wrap.querySelector("svg");
-  const shownW = Math.round(tpl.asset.w * ws.ui.zoom);
-  svg.setAttribute("width", shownW);
-  svg.setAttribute("height", Math.round(tpl.asset.h*ws.ui.zoom));
-  wrap.style.width = shownW+"px";
+  wrap.innerHTML = buildSheetSVG(plan, href) + FAB_HTML;
+  applyZoomSize();
+  renderOverlay();
   wrap.classList.toggle("marquee-on", !!marqueeMode);
 }
 
@@ -1125,7 +1281,8 @@ function renderBadges(){
   if (r.missing.length) bits.push(`<span class="badge warn">必填未完成 ${r.missing.length}</span>`);
   else bits.push(`<span class="badge ok">必填已完成</span>`);
   if (ws.ui.compare) bits.push(`<span class="badge info">原圖對照中（輸出仍為衍生圖）</span>`);
-  if (marqueeMode) bits.push(`<span class="badge info">框選中，Esc 取消</span>`);
+  if (marqueeMode) bits.push(`<span class="badge info">框選中：拖出範圍後自動辨識格式，Esc 取消</span>`);
+  else bits.push(`<span class="badge">點標註可選取 · 拖曳移動 · 控制點改遮罩 · 方向鍵微調 · 雙擊改值 · Ctrl+滾輪縮放</span>`);
   host.innerHTML = bits.join("");
 }
 
@@ -1135,70 +1292,316 @@ function renderAll(){
 }
 
 /* ==========================================================================
-   8. 框選
+   8. 圖上直接操作：選取、拖曳、控制點、浮動工具列、就地編輯、框選辨識
    ========================================================================== */
 let marqueeMode = null;   // 'field' | 'mask' | null
+let detected = null;      // 框選自動辨識結果（供 overlay 顯示）
+let drag = null;          // 進行中的拖曳
+let inlineFid = null;     // 就地編輯中的欄位
+let lastNudgeAt = 0;
+
+const FAB_HTML =
+  `<div class="fab" id="fab" hidden>`+
+    `<button type="button" data-fab="font-" title="縮小字級">A−</button>`+
+    `<button type="button" data-fab="font+" title="放大字級">A+</button>`+
+    `<i class="sep"></i>`+
+    `<button type="button" data-fab="rot0" title="水平">→</button>`+
+    `<button type="button" data-fab="rot-90" title="直向向上">↑</button>`+
+    `<button type="button" data-fab="rot90" title="直向向下">↓</button>`+
+    `<i class="sep"></i>`+
+    `<button type="button" data-fab="tol" title="切換公差位置">公差</button>`+
+    `<button type="button" data-fab="center" title="文字置中到遮罩">置中</button>`+
+    `<button type="button" data-fab="edit" title="就地修改數值">改值</button>`+
+    `<button type="button" data-fab="del" title="移除此欄位">刪除</button>`+
+  `</div>`+
+  `<input class="inline-edit" id="inlineEdit" hidden>`;
+
+const clamp = (v,lo,hi)=> Math.max(lo, Math.min(hi, v));
+const fieldById = (id)=> id ? draftTpl().fields.find(f=>f.id===id) : null;
+
+function positionFab(){
+  const fab = $("fab"); if (!fab) return;
+  const f = fieldById(ws.ui.selectedFieldId);
+  if (!f || ws.ui.compare || inlineFid || drag){ fab.hidden = true; return; }
+  const z = ws.ui.zoom;
+  const t = fieldTextBlock(f, curDraft().values[f.id]||{});
+  let top = f.mask.y*z - 42;
+  if (top < 2) top = (f.mask.y + f.mask.h)*z + 10;
+  fab.style.left = (t.x*z)+"px";
+  fab.style.top  = top+"px";
+  fab.hidden = false;
+}
+
 function startMarquee(kind){
-  marqueeMode = kind; marquee = null;
-  renderPreview(); renderBadges();
+  marqueeMode = kind; marquee = null; detected = null;
+  ws.ui.selectedFieldId = null;
+  renderOverlay(); renderBadges();
+  $("sheetWrap").classList.add("marquee-on");
 }
 function cancelMarquee(){
-  if (!marqueeMode && !marquee) return;
-  marqueeMode = null; marquee = null;
-  renderPreview(); renderBadges();
+  if (!marqueeMode && !marquee && !detected) return;
+  marqueeMode = null; marquee = null; detected = null;
+  $("sheetWrap").classList.remove("marquee-on");
+  renderOverlay(); renderBadges();
 }
-document.addEventListener("keydown",(e)=>{ if (e.key==="Escape") cancelMarquee(); });
 
 function toImageCoords(evt){
-  const svg = $("sheetWrap").querySelector("svg");
-  if (!svg) return null;
+  const svg = $("sheetSvg"); if (!svg) return null;
   const r = svg.getBoundingClientRect();
   const tpl = draftTpl();
   return {
-    x: Math.round((evt.clientX-r.left)/r.width * tpl.asset.w),
-    y: Math.round((evt.clientY-r.top)/r.height * tpl.asset.h)
+    x: Math.round((evt.clientX-r.left)/r.width  * tpl.asset.w),
+    y: Math.round((evt.clientY-r.top )/r.height * tpl.asset.h)
   };
 }
 
+/* ---------- 拖曳 ---------- */
 $("sheetWrap").addEventListener("pointerdown",(e)=>{
-  if (!marqueeMode){
-    // 點圖上的欄位區域 → 回到表格
-    const p = toImageCoords(e); if (!p) return;
-    const hit = draftTpl().fields.find(f=> p.x>=f.mask.x && p.x<=f.mask.x+f.mask.w && p.y>=f.mask.y && p.y<=f.mask.y+f.mask.h);
-    if (hit){
-      selectField(hit.id);
-      const el = $((ws.ui.mode==="fill"?"v-":"s-label-")+hit.id);
-      if (el){ el.focus(); el.scrollIntoView({block:"center"}); }
-    }
+  if (e.target.closest(".fab") || e.target.closest(".inline-edit")) return;
+  if (inlineFid) commitInline();
+  const p = toImageCoords(e); if (!p) return;
+
+  if (marqueeMode){
+    marquee = { x0:p.x, y0:p.y, x1:p.x, y1:p.y };
+    drag = { mode:"marquee" };
+    $("sheetWrap").setPointerCapture?.(e.pointerId);
+    renderOverlay();
+    return;
+  }
+
+  const el = e.target, cls = el.classList || { contains:()=>false };
+  const fid = el.dataset ? el.dataset.fid : null;
+
+  if (cls.contains("ov-handle") && fid){
+    const f = fieldById(fid);
+    drag = { mode:"mask", fid, handle:el.dataset.handle, start:p, orig:Object.assign({},f.mask) };
+  } else if (cls.contains("ov-font") && fid){
+    const f = fieldById(fid);
+    drag = { mode:"font", fid, start:p, orig:f.fontSize };
+  } else if (fid && (cls.contains("ov-text") || cls.contains("ov-anchor") || cls.contains("ov-mask"))){
+    if (ws.ui.selectedFieldId !== fid) selectField(fid);
+    const f = fieldById(fid);
+    drag = { mode:"text", fid, start:p, orig:Object.assign({},f.text) };
+  } else {
+    if (ws.ui.selectedFieldId){ ws.ui.selectedFieldId = null; renderOverlay(); }
+    const st = $("stage");
+    drag = { mode:"pan", startClient:{x:e.clientX,y:e.clientY}, startScroll:{l:st.scrollLeft, t:st.scrollTop} };
+    $("sheetWrap").classList.add("panning");
+  }
+  $("sheetWrap").setPointerCapture?.(e.pointerId);
+  if (drag.mode!=="pan") positionFab();
+});
+
+$("sheetWrap").addEventListener("pointermove",(e)=>{
+  if (!drag) return;
+
+  if (drag.mode==="pan"){
+    const st = $("stage");
+    st.scrollLeft = drag.startScroll.l - (e.clientX - drag.startClient.x);
+    st.scrollTop  = drag.startScroll.t - (e.clientY - drag.startClient.y);
     return;
   }
   const p = toImageCoords(e); if (!p) return;
-  marquee = { x0:p.x, y0:p.y, x1:p.x, y1:p.y };
-  $("sheetWrap").setPointerCapture?.(e.pointerId);
-  renderPreview();
+
+  if (drag.mode==="marquee"){
+    marquee.x1=p.x; marquee.y1=p.y;
+    const r = document.getElementById("marqueeRect");
+    if (r){
+      r.setAttribute("x", Math.min(marquee.x0,marquee.x1));
+      r.setAttribute("y", Math.min(marquee.y0,marquee.y1));
+      r.setAttribute("width", Math.abs(marquee.x1-marquee.x0));
+      r.setAttribute("height", Math.abs(marquee.y1-marquee.y0));
+    } else renderOverlay();
+    return;
+  }
+
+  const f = fieldById(drag.fid); if (!f) return;
+  if (!drag.checkpointed){ checkpoint(); drag.checkpointed = true; }
+  const A = draftTpl().asset;
+  const dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+
+  if (drag.mode==="text"){
+    f.text.x = clamp(drag.orig.x + dx, 0, A.w);
+    f.text.y = clamp(drag.orig.y + dy, 0, A.h);
+  } else if (drag.mode==="mask"){
+    const H = drag.handle, o = drag.orig;
+    let x=o.x, y=o.y, w=o.w, h=o.h;
+    if (H.indexOf("w")>=0){ x = o.x + dx; w = o.w - dx; }
+    if (H.indexOf("e")>=0){ w = o.w + dx; }
+    if (H.indexOf("n")>=0){ y = o.y + dy; h = o.h - dy; }
+    if (H.indexOf("s")>=0){ h = o.h + dy; }
+    if (w < 6){ w = 6; if (H.indexOf("w")>=0) x = o.x + o.w - 6; }
+    if (h < 6){ h = 6; if (H.indexOf("n")>=0) y = o.y + o.h - 6; }
+    f.mask.x = clamp(Math.round(x),0,A.w); f.mask.y = clamp(Math.round(y),0,A.h);
+    f.mask.w = clamp(Math.round(w),6,A.w); f.mask.h = clamp(Math.round(h),6,A.h);
+  } else if (drag.mode==="font"){
+    const r = (f.orientation||0)*Math.PI/180;
+    const along = dx*Math.cos(r) + dy*Math.sin(r);
+    f.fontSize = clamp(Math.round(drag.orig + along/2), 8, 120);
+  }
+  updateFieldDOM(drag.fid);
+  renderOverlay();
 });
-$("sheetWrap").addEventListener("pointermove",(e)=>{
-  if (!marqueeMode || !marquee) return;
-  const p = toImageCoords(e); if (!p) return;
-  marquee.x1=p.x; marquee.y1=p.y;
-  // 拖曳中只更新選取框，避免整張圖重繪
-  const r = document.getElementById("marqueeRect");
-  if (r){
-    r.setAttribute("x", Math.min(marquee.x0,marquee.x1));
-    r.setAttribute("y", Math.min(marquee.y0,marquee.y1));
-    r.setAttribute("width", Math.abs(marquee.x1-marquee.x0));
-    r.setAttribute("height", Math.abs(marquee.y1-marquee.y0));
-  } else renderPreview();
+
+$("sheetWrap").addEventListener("pointerup",(e)=>{
+  if (!drag) return;
+  const mode = drag.mode;
+  $("sheetWrap").classList.remove("panning");
+  if (mode==="marquee"){ drag=null; finishMarquee(); return; }
+  drag = null;
+  positionFab();
+  if (mode==="pan") return;
+  curDraft().updatedAt = now();
+  const sp = $("panel").scrollTop;
+  renderPanel(); $("panel").scrollTop = sp;
+  renderOverlay(); renderBadges(); scheduleSave();
 });
-$("sheetWrap").addEventListener("pointerup",()=>{
-  if (!marqueeMode || !marquee) return;
+$("sheetWrap").addEventListener("pointercancel", ()=>{ drag=null; $("sheetWrap").classList.remove("panning"); positionFab(); });
+
+/* ---------- 浮動工具列 ---------- */
+$("sheetWrap").addEventListener("click",(e)=>{
+  const btn = e.target.closest("[data-fab]"); if (!btn) return;
+  const f = fieldById(ws.ui.selectedFieldId); if (!f) return;
+  const act = btn.getAttribute("data-fab");
+  if (act==="edit"){ startInlineEdit(f.id); return; }
+  checkpoint();
+  if (act==="font-") f.fontSize = clamp(f.fontSize-2, 8, 120);
+  else if (act==="font+") f.fontSize = clamp(f.fontSize+2, 8, 120);
+  else if (act==="rot0") f.orientation = 0;
+  else if (act==="rot-90") f.orientation = -90;
+  else if (act==="rot90") f.orientation = 90;
+  else if (act==="tol") f.tolPosition = (f.tolPosition==="right" ? "above" : "right");
+  else if (act==="center"){ f.text.x = Math.round(f.mask.x+f.mask.w/2); f.text.y = Math.round(f.mask.y+f.mask.h/2); }
+  else if (act==="del"){
+    const id=f.id, t=draftTpl();
+    t.fields = t.fields.filter(x=>x.id!==id);
+    delete curDraft().values[id];
+    ws.ui.selectedFieldId = t.fields[0]?.id || null;
+    renderPanel(); renderPreview(); renderBadges(); scheduleSave();
+    return;
+  }
+  updateFieldDOM(f.id);
+  const sp=$("panel").scrollTop; renderPanel(); $("panel").scrollTop=sp;
+  renderOverlay(); scheduleSave();
+});
+
+/* ---------- 就地編輯 ---------- */
+function startInlineEdit(fid){
+  const f = fieldById(fid); if (!f) return;
+  inlineFid = fid;
+  const inp = $("inlineEdit");
+  const v = curDraft().values[fid] || {};
+  const t = fieldTextBlock(f, v);
+  const z = ws.ui.zoom;
+  inp.value = v.value || "";
+  inp.style.left = (t.x*z)+"px";
+  inp.style.top  = (t.y*z)+"px";
+  inp.style.fontSize = clamp(Math.round(f.fontSize*z), 12, 30)+"px";
+  inp.hidden = false;
+  positionFab();
+  inp.focus(); inp.select();
+}
+function commitInline(){
+  if (!inlineFid) return;
+  const fid = inlineFid, val = $("inlineEdit").value;
+  inlineFid = null;
+  $("inlineEdit").hidden = true;
+  const d = curDraft();
+  const cur = d.values[fid] || {value:"",tolUpper:"",tolLower:""};
+  if (cur.value !== val){
+    checkpoint();
+    d.values[fid] = Object.assign({}, cur, {value:val});
+    d.updatedAt = now();
+    updateFieldDOM(fid);
+    const sp=$("panel").scrollTop; renderPanel(); $("panel").scrollTop=sp;
+    renderBadges(); scheduleSave();
+  }
+  renderOverlay();
+}
+function cancelInline(){
+  if (!inlineFid) return;
+  inlineFid = null; $("inlineEdit").hidden = true; renderOverlay();
+}
+$("sheetWrap").addEventListener("keydown",(e)=>{
+  if (!inlineFid) return;
+  if (e.key==="Enter"){ e.preventDefault(); commitInline(); }
+  else if (e.key==="Escape"){ e.preventDefault(); cancelInline(); }
+});
+$("sheetWrap").addEventListener("focusout",(e)=>{
+  if (inlineFid && e.target.id==="inlineEdit") commitInline();
+});
+$("sheetWrap").addEventListener("dblclick",(e)=>{
+  const fid = e.target.dataset ? e.target.dataset.fid : null;
+  if (fid) startInlineEdit(fid);
+});
+
+/* ---------- 鍵盤微調 ---------- */
+document.addEventListener("keydown",(e)=>{
+  if (e.key==="Escape"){
+    if (inlineFid) cancelInline();
+    else if (marqueeMode || marquee || detected) cancelMarquee();
+    else if (ws.ui.selectedFieldId){ ws.ui.selectedFieldId=null; renderOverlay(); }
+    return;
+  }
+  if (inlineFid) return;
+  const tag = (e.target.tagName||"").toLowerCase();
+  if (tag==="input" || tag==="textarea" || tag==="select") return;
+  if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].indexOf(e.key)<0) return;
+  const f = fieldById(ws.ui.selectedFieldId); if (!f) return;
+  e.preventDefault();
+  const step = e.shiftKey ? 10 : 1;
+  const t = Date.now();
+  if (t - lastNudgeAt > 800){ checkpoint(); }
+  lastNudgeAt = t;
+  if (e.key==="ArrowLeft") f.text.x -= step;
+  if (e.key==="ArrowRight") f.text.x += step;
+  if (e.key==="ArrowUp") f.text.y -= step;
+  if (e.key==="ArrowDown") f.text.y += step;
+  updateFieldDOM(f.id); renderOverlay();
+  const sp=$("panel").scrollTop; renderPanel(); $("panel").scrollTop=sp;
+  scheduleSave();
+});
+
+/* ---------- 縮放：以游標為中心 ---------- */
+function fitWidth(){
+  const st = $("stage");
+  const avail = st.clientWidth - 30;              // 扣掉左右留白
+  const z = clamp(avail / draftTpl().asset.w, 0.25, 2);
+  setZoom(z);
+}
+function setZoom(next, clientX, clientY){
+  const before = ws.ui.zoom;
+  next = clamp(+next.toFixed(3), 0.25, 2);
+  if (next===before) return;
+  const st = $("stage"), r = st.getBoundingClientRect();
+  const ax = (clientX==null ? r.width/2  : clientX - r.left);
+  const ay = (clientY==null ? r.height/2 : clientY - r.top);
+  const cx = st.scrollLeft + ax, cy = st.scrollTop + ay;
+  ws.ui.zoom = next;
+  applyZoomSize(); renderOverlay();
+  st.scrollLeft = cx*(next/before) - ax;
+  st.scrollTop  = cy*(next/before) - ay;
+  $("zoomVal").textContent = Math.round(next*100)+"%";
+  scheduleSave();
+}
+$("stage").addEventListener("wheel",(e)=>{
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  setZoom(ws.ui.zoom * (e.deltaY<0 ? 1.15 : 1/1.15), e.clientX, e.clientY);
+}, { passive:false });
+
+/* ---------- 框選結束 → 自動辨識 ---------- */
+async function finishMarquee(){
   const x=Math.min(marquee.x0,marquee.x1), y=Math.min(marquee.y0,marquee.y1);
   const w=Math.abs(marquee.x1-marquee.x0), h=Math.abs(marquee.y1-marquee.y0);
   const kind = marqueeMode;
-  marqueeMode=null; marquee=null;
+  marqueeMode = null; marquee = null;
+  $("sheetWrap").classList.remove("marquee-on");
+
   if (w<MIN_MARQUEE || h<MIN_MARQUEE){
-    toast("框選範圍太小，未建立欄位或遮罩。", "warn");
-    renderPreview(); renderBadges(); return;
+    renderOverlay(); renderBadges();
+    toast("框選範圍太小，未建立欄位或遮罩。","warn");
+    return;
   }
   if (kind==="mask"){
     checkpoint();
@@ -1206,8 +1609,118 @@ $("sheetWrap").addEventListener("pointerup",()=>{
     renderPanel(); renderPreview(); scheduleSave();
     return;
   }
-  openNewFieldDialog({x,y,w,h});
-});
+  const ink = await getInk(draftTpl());
+  detected = ink ? analyzeRegion(ink, {x,y,w,h}) : null;
+  renderOverlay(); renderBadges();
+  openNewFieldDialog(detected || {
+    mask:{x,y,w,h}, text:{x:Math.round(x+w/2), y:Math.round(y+h/2)},
+    orientation:0, fontSize:30, tolPosition:"right", tolBox:null, auto:false
+  });
+}
+
+/* ---------- 底圖墨跡分析 ---------- */
+const inkCache = new Map();
+async function getInk(tpl){
+  const key = tpl.asset.src;
+  if (inkCache.has(key)) return inkCache.get(key);
+  let res = null;
+  try{
+    const { img } = await loadImage(key);
+    const cv = document.createElement("canvas");
+    cv.width = tpl.asset.w; cv.height = tpl.asset.h;
+    const ctx = cv.getContext("2d", { willReadFrequently:true });
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    const d = ctx.getImageData(0,0,cv.width,cv.height).data;
+    const ink = new Uint8Array(cv.width*cv.height);
+    for (let i=0,j=0; j<ink.length; i+=4, j++){
+      ink[j] = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114) < 120 ? 1 : 0;
+    }
+    res = { w:cv.width, h:cv.height, ink };
+  }catch(err){ res = null; }   // 畫布被封鎖時不做辨識，退回手動填寫
+  inkCache.set(key, res);
+  return res;
+}
+
+// 在框選範圍內找出文字墨跡：去除貫穿直線 → 連通元件 → 依字高分出主尺寸與公差
+function analyzeRegion(ink, box){
+  const x0 = clamp(box.x,0,ink.w-1), y0 = clamp(box.y,0,ink.h-1);
+  const w = clamp(box.w,1,ink.w-x0), h = clamp(box.h,1,ink.h-y0);
+  const g = new Uint8Array(w*h);
+  for (let j=0;j<h;j++)
+    for (let i=0;i<w;i++)
+      g[j*w+i] = ink.ink[(y0+j)*ink.w + (x0+i)];
+
+  // 去掉貫穿框內的長直線（尺寸線、輪廓線）
+  for (let i=0;i<w;i++){ let c=0; for (let j=0;j<h;j++) c+=g[j*w+i];
+    if (c >= 0.72*h) for (let j=0;j<h;j++) g[j*w+i]=0; }
+  for (let j=0;j<h;j++){ let c=0; for (let i=0;i<w;i++) c+=g[j*w+i];
+    if (c >= 0.72*w) for (let i=0;i<w;i++) g[j*w+i]=0; }
+
+  // 連通元件（8 鄰接）
+  const seen = new Uint8Array(w*h), comps = [], stack = new Int32Array(w*h);
+  for (let s=0;s<g.length;s++){
+    if (!g[s] || seen[s]) continue;
+    let sp=0; stack[sp++]=s; seen[s]=1;
+    let minx=w, maxx=-1, miny=h, maxy=-1, area=0;
+    while (sp){
+      const k = stack[--sp], ky = (k/w)|0, kx = k - ky*w;
+      area++;
+      if (kx<minx) minx=kx; if (kx>maxx) maxx=kx;
+      if (ky<miny) miny=ky; if (ky>maxy) maxy=ky;
+      for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++){
+        const nx=kx+dx, ny=ky+dy;
+        if (nx<0||ny<0||nx>=w||ny>=h) continue;
+        const nk = ny*w+nx;
+        if (g[nk] && !seen[nk]){ seen[nk]=1; stack[sp++]=nk; }
+      }
+    }
+    if (area >= 5) comps.push({ x:minx, y:miny, w:maxx-minx+1, h:maxy-miny+1, area });
+  }
+  if (!comps.length) return null;
+
+  // 以「長軸」判斷字級，明顯較小的元件視為公差
+  const axis = c=> Math.max(c.w, c.h);
+  const sorted = comps.map(axis).sort((a,b)=>a-b);
+  const med = sorted[Math.floor(sorted.length/2)];
+  const small = comps.filter(c=> axis(c) < med*0.72);
+  const main  = comps.filter(c=> axis(c) >= med*0.72);
+  const use = main.length ? main : comps;
+
+  const bboxOf = (arr)=>{
+    const x1=Math.min(...arr.map(c=>c.x)), y1=Math.min(...arr.map(c=>c.y));
+    const x2=Math.max(...arr.map(c=>c.x+c.w)), y2=Math.max(...arr.map(c=>c.y+c.h));
+    return { x:x0+x1, y:y0+y1, w:x2-x1, h:y2-y1 };
+  };
+  const valBox = bboxOf(use);
+  const allBox = bboxOf(comps);
+
+  const vertical = valBox.h > valBox.w*1.35;
+  const orientation = vertical ? -90 : 0;
+
+  // 字級：主元件長軸中位數 ÷ 數字字高比例
+  const mainAxis = use.map(axis).sort((a,b)=>a-b);
+  const fontSize = clamp(Math.round(mainAxis[Math.floor(mainAxis.length/2)] / 0.72), 8, 120);
+
+  // 公差位置：小元件相對主尺寸的方位
+  let tolPosition = "right", tolBox = null;
+  if (small.length >= 2){
+    tolBox = bboxOf(small);
+    const tcx = tolBox.x + tolBox.w/2, tcy = tolBox.y + tolBox.h/2;
+    const vcx = valBox.x + valBox.w/2, vcy = valBox.y + valBox.h/2;
+    if (vertical) tolPosition = (tcx < vcx) ? "above" : "right";
+    else tolPosition = (tcy < vcy - valBox.h*0.35) ? "above" : "right";
+  }
+
+  const m = 4;
+  return {
+    mask: { x:Math.max(0,allBox.x-m), y:Math.max(0,allBox.y-m), w:allBox.w+2*m, h:allBox.h+2*m },
+    text: { x:Math.round(valBox.x+valBox.w/2), y:Math.round(valBox.y+valBox.h/2) },
+    orientation, fontSize, tolPosition,
+    tolBox: small.length>=2 ? tolBox : null,
+    hasTol: small.length>=2,
+    auto: true
+  };
+}
 
 /* ==========================================================================
    9. 對話框
@@ -1228,9 +1741,17 @@ function toast(text, kind){
   $("tOk").addEventListener("click", closeModal);
 }
 
-function openNewFieldDialog(rect){
+function openNewFieldDialog(det){
+  const o = String(det.orientation);
+  const note = det.auto
+    ? `<div class="msg ok">已自動辨識框內格式：`+
+      `${det.orientation===0?"水平":"直向"}文字、字級約 ${det.fontSize}px、`+
+      `${det.hasTol?("偵測到公差，位於主尺寸"+(det.tolPosition==="above"?"上方":"右側")):"未偵測到公差"}。`+
+      `遮罩已自動貼齊實際墨跡（藍框＝遮罩範圍，綠虛線＝判定為公差的部分）。`+
+      `<br><b>不辨識數字內容</b>，舊值請看圖填入；辨識結果請核對後再建立。</div>`
+    : `<div class="msg warn">無法讀取底圖像素（瀏覽器封鎖畫布），本次未自動辨識，請手動設定。</div>`;
   openModal("新增可填尺寸",
-    `<div class="msg info">框選只記錄位置，不會辨識框內數字。舊值請人工讀取後輸入。</div>`+
+    note+
     `<div class="set-body" style="padding:0">`+
       `<div class="g2">`+
         `<div><label for="nf-label">欄位名稱</label><input id="nf-label" type="text" placeholder="例如：入口直徑"></div>`+
@@ -1239,7 +1760,7 @@ function openNewFieldDialog(rect){
       `<div class="g3">`+
         `<div><label for="nf-prefix">前綴</label><input id="nf-prefix" type="text" placeholder="Ø / R"></div>`+
         `<div><label for="nf-unit">單位</label><input id="nf-unit" type="text" value="mm"></div>`+
-        `<div><label for="nf-font">字級(px)</label><input id="nf-font" type="number" value="30" min="8" max="120"></div>`+
+        `<div><label for="nf-font">字級(px)</label><input id="nf-font" type="number" value="${det.fontSize}" min="8" max="120"></div>`+
       `</div>`+
       `<div class="g3">`+
         `<div><label for="nf-default">預設尺寸</label><input id="nf-default" type="text" placeholder="留白＝空白必填"></div>`+
@@ -1248,17 +1769,22 @@ function openNewFieldDialog(rect){
       `</div>`+
       `<div class="g2">`+
         `<div><label for="nf-orient">方向</label><select id="nf-orient">`+
-          `<option value="0">水平</option><option value="-90">直向向上</option><option value="90">直向向下</option></select></div>`+
+          `<option value="0"${o==="0"?" selected":""}>水平</option>`+
+          `<option value="-90"${o==="-90"?" selected":""}>直向向上</option>`+
+          `<option value="90"${o==="90"?" selected":""}>直向向下</option></select></div>`+
         `<div><label for="nf-tolpos">公差位置</label><select id="nf-tolpos">`+
-          `<option value="right">主尺寸右側</option><option value="above">主尺寸上方</option></select></div>`+
+          `<option value="right"${det.tolPosition==="right"?" selected":""}>主尺寸右側</option>`+
+          `<option value="above"${det.tolPosition==="above"?" selected":""}>主尺寸上方</option></select></div>`+
       `</div>`+
       `<label class="chk" style="margin-top:8px"><input type="checkbox" id="nf-req" checked> 必填</label>`+
-      `<div class="prefix-hint">遮罩：x ${rect.x}, y ${rect.y}, 寬 ${rect.w}, 高 ${rect.h}（文字預設置中於遮罩）</div>`+
+      `<div class="prefix-hint">遮罩 x ${det.mask.x}, y ${det.mask.y}, 寬 ${det.mask.w}, 高 ${det.mask.h}；`+
+      `文字中心 ${det.text.x}, ${det.text.y}。建立後可直接在圖上拖曳調整。</div>`+
     `</div>`,
     `<button class="btn" type="button" id="nfCancel">取消</button><button class="btn primary" type="button" id="nfOk">建立欄位</button>`);
 
   $("nf-label").focus();
-  $("nfCancel").addEventListener("click", ()=>{ closeModal(); renderPreview(); renderBadges(); });
+  const done = ()=>{ detected=null; closeModal(); };
+  $("nfCancel").addEventListener("click", ()=>{ done(); renderOverlay(); renderBadges(); });
   $("nfOk").addEventListener("click", ()=>{
     const label = $("nf-label").value.trim();
     let id = $("nf-id").value.trim();
@@ -1279,15 +1805,15 @@ function openNewFieldDialog(rect){
       fontSize:(isFinite(fs)&&fs>=8&&fs<=120)?fs:30,
       orientation:parseInt($("nf-orient").value,10),
       tolPosition:$("nf-tolpos").value,
-      mask:{x:rect.x,y:rect.y,w:rect.w,h:rect.h},
-      text:{x:Math.round(rect.x+rect.w/2), y:Math.round(rect.y+rect.h/2)}
+      mask:{x:det.mask.x, y:det.mask.y, w:det.mask.w, h:det.mask.h},
+      text:{x:det.text.x, y:det.text.y}
     });
     draftTpl().fields.push(f);
     const d=curDraft();
     d.values[id]={ value:f.defaultValue, tolUpper:f.defaultTolUpper, tolLower:f.defaultTolLower };
     d.updatedAt=now();
     ws.ui.selectedFieldId=id;
-    closeModal(); renderPanel(); renderPreview(); renderBadges(); scheduleSave();
+    done(); renderPanel(); renderPreview(); renderBadges(); scheduleSave();
   });
 }
 
@@ -1584,9 +2110,9 @@ $("tabFill").addEventListener("click", ()=>{ if(ws.ui.mode==="fill")return; ws.u
 $("tabSet").addEventListener("click", ()=>{ if(ws.ui.mode==="set")return; ws.ui.mode="set"; renderPanel(); renderPreview(); scheduleSave(); });
 $("catFilter").addEventListener("change", (e)=>{ ws.ui.category=e.target.value; renderTemplateList(); scheduleSave(); });
 $("compareChk").addEventListener("change", (e)=>{ ws.ui.compare=e.target.checked; renderPreview(); renderBadges(); scheduleSave(); });
-$("zoomIn").addEventListener("click", ()=>{ ws.ui.zoom=Math.min(2, +(ws.ui.zoom+0.25).toFixed(2)); renderPreview(); scheduleSave(); });
-$("zoomOut").addEventListener("click", ()=>{ ws.ui.zoom=Math.max(0.5, +(ws.ui.zoom-0.25).toFixed(2)); renderPreview(); scheduleSave(); });
-$("zoomFit").addEventListener("click", ()=>{ ws.ui.zoom=1; renderPreview(); scheduleSave(); });
+$("zoomIn").addEventListener("click", ()=> setZoom(ws.ui.zoom+0.25));
+$("zoomOut").addEventListener("click", ()=> setZoom(ws.ui.zoom-0.25));
+$("zoomFit").addEventListener("click", fitWidth);
 $("undoBtn").addEventListener("click", undo);
 $("backupBtn").addEventListener("click", exportBackup);
 $("importBtn").addEventListener("click", openImport);
@@ -1596,6 +2122,7 @@ $("pngBtn").addEventListener("click", exportPNG);
 $("printBtn").addEventListener("click", printSheet);
 
 (async function boot(){
+  let freshStart = true;
   try{
     const saved = await store.get();
     if (saved && saved.formatVersion===FORMAT_VERSION && saved.templates && Object.keys(saved.templates).length){
@@ -1603,6 +2130,7 @@ $("printBtn").addEventListener("click", printSheet);
       if (!ws.templates[ws.ui?.currentTemplateId]) ws.ui.currentTemplateId = Object.keys(ws.templates)[0];
       ws.ui.compare = false;
       setSaveState("saved","已保存到本機");
+      freshStart = false;
     } else {
       setSaveState("idle","尚未保存");
     }
@@ -1610,6 +2138,7 @@ $("printBtn").addEventListener("click", printSheet);
     setSaveState("error","本機保存無法使用");
   }
   renderAll();
+  if (freshStart) setTimeout(fitWidth, 60);   // 首次開啟先讓整張圖看得到
   $("undoBtn").disabled = true;
 })();
 
