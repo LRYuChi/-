@@ -1,0 +1,1617 @@
+<title>圖面工坊</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#e9edf1;
+    --surface:#ffffff;
+    --surface-2:#f3f6f8;
+    --surface-3:#e7ecf0;
+    --ink:#18232e;
+    --ink-dim:#5a6b7a;
+    --ink-faint:#8899a8;
+    --border:#d3dbe2;
+    --border-strong:#b4c0cb;
+    --accent:#b85c10;
+    --accent-ink:#ffffff;
+    --accent-soft:#fbe8d4;
+    --ok:#1d7f4d;
+    --ok-soft:#e0f2e8;
+    --warn:#b8391f;
+    --warn-soft:#fbe5e0;
+    --info:#2b5f8f;
+    --info-soft:#e2edf7;
+    --shadow:0 1px 2px rgba(20,32,44,.06), 0 8px 22px rgba(20,32,44,.07);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f151b;
+      --surface:#161e26;
+      --surface-2:#1c2630;
+      --surface-3:#243039;
+      --ink:#e7eef4;
+      --ink-dim:#94a5b4;
+      --ink-faint:#6c7d8c;
+      --border:#2a3540;
+      --border-strong:#3a4753;
+      --accent:#e0893b;
+      --accent-ink:#161008;
+      --accent-soft:#3a2915;
+      --ok:#4fbc84;
+      --ok-soft:#163125;
+      --warn:#e2604a;
+      --warn-soft:#3a1d18;
+      --info:#6fa8dc;
+      --info-soft:#17293a;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f151b; --surface:#161e26; --surface-2:#1c2630; --surface-3:#243039;
+    --ink:#e7eef4; --ink-dim:#94a5b4; --ink-faint:#6c7d8c;
+    --border:#2a3540; --border-strong:#3a4753;
+    --accent:#e0893b; --accent-ink:#161008; --accent-soft:#3a2915;
+    --ok:#4fbc84; --ok-soft:#163125; --warn:#e2604a; --warn-soft:#3a1d18;
+    --info:#6fa8dc; --info-soft:#17293a;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size:13px; line-height:1.5;
+    padding-inline:16px;
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar{
+    max-width:1500px; margin:0 auto; padding-block:14px 10px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .brand{ display:flex; align-items:baseline; gap:10px; margin-right:auto; }
+  .brand h1{ margin:0; font-size:19px; font-weight:700; letter-spacing:.02em; }
+  .brand .sub{ font-size:11.5px; color:var(--ink-dim); }
+  .savestate{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:999px;
+    background:var(--surface-2); border:1px solid var(--border); color:var(--ink-dim);
+  }
+  .savestate .led{ width:7px; height:7px; border-radius:50%; background:var(--ink-faint); flex:none; }
+  .savestate[data-s="dirty"]{ background:var(--info-soft); color:var(--info); border-color:transparent; }
+  .savestate[data-s="dirty"] .led{ background:var(--info); }
+  .savestate[data-s="saving"]{ background:var(--accent-soft); color:var(--accent); border-color:transparent; }
+  .savestate[data-s="saving"] .led{ background:var(--accent); }
+  .savestate[data-s="saved"]{ background:var(--ok-soft); color:var(--ok); border-color:transparent; }
+  .savestate[data-s="saved"] .led{ background:var(--ok); }
+  .savestate[data-s="error"]{ background:var(--warn-soft); color:var(--warn); border-color:transparent; }
+  .savestate[data-s="error"] .led{ background:var(--warn); }
+
+  button{ font-family:inherit; font-size:12.5px; }
+  .btn{
+    border:1px solid var(--border-strong); background:var(--surface);
+    color:var(--ink); border-radius:6px; padding:7px 11px; font-weight:600; cursor:pointer;
+  }
+  .btn:hover{ background:var(--surface-2); }
+  .btn:active{ transform:translateY(1px); }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn.primary:hover{ filter:brightness(1.06); background:var(--accent); }
+  .btn.ghost{ background:transparent; border-color:var(--border); }
+  .btn.sm{ padding:5px 8px; font-size:11.5px; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--accent); outline-offset:1px;
+  }
+
+  /* ---------- layout ---------- */
+  .app{
+    max-width:1500px; margin:0 auto; padding-block:0 32px;
+    display:grid; grid-template-columns:210px 330px minmax(0,1fr); gap:14px;
+    align-items:start;
+  }
+  @media (max-width:1180px){ .app{ grid-template-columns:200px minmax(0,1fr); } .col-preview{ grid-column:1 / -1; } }
+  @media (max-width:760px){ .app{ grid-template-columns:1fr; } .col-preview{ grid-column:auto; } }
+
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:9px; box-shadow:var(--shadow);
+  }
+  .card > header{
+    padding:10px 12px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:8px; justify-content:space-between;
+  }
+  .card > header h2{
+    margin:0; font-size:11.5px; font-weight:700; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--ink-dim);
+  }
+  .card .body{ padding:12px; }
+
+  /* ---------- template rail ---------- */
+  .filter-row{ padding:10px 12px; border-bottom:1px solid var(--border); }
+  select, input[type=text], input[type=number], textarea{
+    width:100%; padding:6px 8px; border:1px solid var(--border-strong); border-radius:5px;
+    background:var(--surface-2); color:var(--ink); font-family:inherit; font-size:12.5px;
+  }
+  .tpl-list{ list-style:none; margin:0; padding:8px; display:flex; flex-direction:column; gap:6px;
+    max-height:640px; overflow-y:auto; }
+  .tpl-item{
+    display:grid; grid-template-columns:38px 1fr; gap:8px; align-items:center;
+    padding:6px; border:1px solid var(--border); border-radius:7px;
+    background:var(--surface-2); cursor:pointer; text-align:left; width:100%;
+  }
+  .tpl-item:hover{ border-color:var(--border-strong); }
+  .tpl-item[aria-current="true"]{ border-color:var(--accent); background:var(--accent-soft); }
+  .tpl-item img{ width:38px; height:52px; object-fit:cover; object-position:center 22%;
+    background:#fff; border:1px solid var(--border); border-radius:3px; }
+  .tpl-item .name{ font-size:11.5px; font-weight:700; font-family:"IBM Plex Mono",monospace; }
+  .tpl-item .meta{ font-size:10.5px; color:var(--ink-dim); }
+  .tpl-item .count{ font-size:10px; color:var(--ink-faint); }
+
+  /* ---------- mode tabs ---------- */
+  .tabs{ display:flex; gap:4px; padding:8px 8px 0; }
+  .tab{
+    flex:1; border:1px solid var(--border); border-bottom:none; background:var(--surface-2);
+    color:var(--ink-dim); border-radius:6px 6px 0 0; padding:7px 6px; font-weight:700; cursor:pointer;
+    font-size:12px;
+  }
+  .tab[aria-selected="true"]{ background:var(--surface); color:var(--ink); border-color:var(--border-strong); }
+
+  .scroll-pane{ max-height:560px; overflow-y:auto; padding:12px; }
+
+  /* ---------- dimension form ---------- */
+  .dim-row{
+    border:1px solid var(--border); border-radius:7px; padding:8px; margin-bottom:8px;
+    background:var(--surface-2); cursor:pointer;
+  }
+  .dim-row[data-sel="true"]{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+  .dim-row .top{ display:flex; justify-content:space-between; align-items:baseline; gap:6px; margin-bottom:5px; }
+  .dim-row .lbl{ font-weight:700; font-size:12.5px; }
+  .dim-row .fid{ font-size:10px; color:var(--ink-faint); font-family:"IBM Plex Mono",monospace; }
+  .dim-row .req{ color:var(--warn); font-size:10.5px; font-weight:700; }
+  .dim-grid{ display:grid; grid-template-columns:1.35fr .8fr .8fr; gap:6px; }
+  .dim-grid label{ font-size:9.5px; color:var(--ink-dim); display:block; margin-bottom:2px; letter-spacing:.04em; }
+  .dim-grid input{ font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; }
+  .dim-row input.empty-required{ border-color:var(--warn); background:var(--warn-soft); }
+  .prefix-hint{ font-size:10px; color:var(--ink-faint); margin-top:4px; }
+
+  .info-grid{ display:grid; gap:8px; }
+  .info-grid label{ font-size:10px; color:var(--ink-dim); display:block; margin-bottom:3px; letter-spacing:.04em; font-weight:600; }
+
+  .empty-note{
+    padding:14px; border:1px dashed var(--border-strong); border-radius:7px;
+    color:var(--ink-dim); font-size:12px; background:var(--surface-2);
+  }
+
+  /* ---------- settings ---------- */
+  .set-block{ border:1px solid var(--border); border-radius:7px; margin-bottom:8px; background:var(--surface-2); }
+  .set-block > .hd{ padding:7px 9px; display:flex; justify-content:space-between; align-items:center; gap:6px;
+    border-bottom:1px solid var(--border); }
+  .set-block > .hd .t{ font-weight:700; font-size:12px; }
+  .set-block > .hd .t .fid{ font-size:10px; color:var(--ink-faint); font-family:"IBM Plex Mono",monospace; font-weight:400; }
+  .set-block[data-sel="true"]{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+  .set-body{ padding:9px; display:grid; gap:7px; }
+  .g2{ display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .g3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; }
+  .g4{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:7px; }
+  .nudge{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+  .nudge .btn{ padding:4px 8px; }
+  .chk{ display:flex; align-items:center; gap:6px; font-size:11.5px; }
+  .chk input{ width:auto; }
+
+  /* ---------- preview ---------- */
+  .preview-head{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 12px;
+    border-bottom:1px solid var(--border); }
+  .zoomctl{ display:flex; align-items:center; gap:4px; margin-left:auto; }
+  .zoomctl .z{ font-family:"IBM Plex Mono",monospace; font-size:11.5px; min-width:44px; text-align:center; color:var(--ink-dim); }
+  .stage{
+    overflow:auto; background:var(--surface-3); padding:14px;
+    max-height:74vh; display:flex; justify-content:center;
+  }
+  .sheet-wrap{ position:relative; flex:none; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.18); }
+  .sheet-wrap svg{ display:block; }
+  .sheet-wrap.marquee-on{ cursor:crosshair; }
+  .badge-row{ display:flex; gap:6px; flex-wrap:wrap; padding:8px 12px; border-top:1px solid var(--border); }
+  .badge{ font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:999px;
+    background:var(--surface-2); border:1px solid var(--border); color:var(--ink-dim); }
+  .badge.warn{ background:var(--warn-soft); color:var(--warn); border-color:transparent; }
+  .badge.ok{ background:var(--ok-soft); color:var(--ok); border-color:transparent; }
+  .badge.info{ background:var(--info-soft); color:var(--info); border-color:transparent; }
+
+  .actions{ display:flex; gap:8px; flex-wrap:wrap; padding:10px 12px; border-top:1px solid var(--border); }
+
+  /* ---------- modal ---------- */
+  .modal-back{
+    position:fixed; inset:0; background:rgba(12,18,24,.55); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  .modal{
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:10px;
+    box-shadow:0 18px 50px rgba(0,0,0,.35); max-width:min(760px,96vw); width:100%;
+    max-height:88vh; display:flex; flex-direction:column;
+  }
+  .modal header{ padding:12px 14px; border-bottom:1px solid var(--border); display:flex;
+    justify-content:space-between; align-items:center; gap:8px; }
+  .modal header h3{ margin:0; font-size:14px; font-weight:700; }
+  .modal .mbody{ padding:14px; overflow:auto; }
+  .modal footer{ padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px;
+    justify-content:flex-end; flex-wrap:wrap; }
+  .modal textarea{ width:100%; height:190px; font-family:"IBM Plex Mono",monospace; font-size:11px; }
+  .modal img{ max-width:100%; border:1px solid var(--border); background:#fff; }
+  .snap-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .snap-list li{ display:flex; gap:8px; align-items:center; justify-content:space-between;
+    border:1px solid var(--border); border-radius:6px; padding:8px 10px; background:var(--surface-2); }
+  .snap-list .nm{ font-weight:700; font-size:12.5px; }
+  .snap-list .dt{ font-size:10.5px; color:var(--ink-dim); font-family:"IBM Plex Mono",monospace; }
+  .msg{ padding:9px 11px; border-radius:6px; font-size:12px; font-weight:600; margin-bottom:10px; }
+  .msg.warn{ background:var(--warn-soft); color:var(--warn); }
+  .msg.info{ background:var(--info-soft); color:var(--info); }
+  .msg.ok{ background:var(--ok-soft); color:var(--ok); }
+  .msg ul{ margin:6px 0 0; padding-left:18px; font-weight:500; }
+
+  #printArea{ display:none; }
+  @media print{
+    body > *:not(#printArea){ display:none !important; }
+    body{ padding:0; background:#fff; }
+    #printArea{ display:block; }
+    #printArea img{ width:100%; height:auto; display:block; }
+  }
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+
+<div class="toolbar">
+  <div class="brand">
+    <h1>圖面工坊</h1>
+    <span class="sub">範本改尺寸 · 試作圖產出</span>
+  </div>
+  <span class="savestate" id="saveState" data-s="idle"><span class="led"></span><span id="saveText">準備中</span></span>
+  <button class="btn ghost sm" id="undoBtn" title="復原上一步">復原</button>
+  <button class="btn ghost sm" id="backupBtn">備份資料</button>
+  <button class="btn ghost sm" id="importBtn">匯入備份</button>
+</div>
+
+<div class="app">
+  <!-- ============ 左側：範本區 ============ -->
+  <section class="card col-rail">
+    <header><h2>範本</h2><span class="badge" id="tplCount">0</span></header>
+    <div class="filter-row">
+      <select id="catFilter" aria-label="類型篩選"></select>
+    </div>
+    <ul class="tpl-list" id="tplList"></ul>
+  </section>
+
+  <!-- ============ 中間：填寫 / 設定 ============ -->
+  <section class="card col-form">
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tabFill" role="tab" aria-selected="true">填寫尺寸</button>
+      <button class="tab" id="tabSet" role="tab" aria-selected="false">設定範本</button>
+    </div>
+    <div class="scroll-pane" id="panel"></div>
+  </section>
+
+  <!-- ============ 右側：預覽 ============ -->
+  <section class="card col-preview">
+    <div class="preview-head">
+      <strong id="pvTitle" class="mono">—</strong>
+      <label class="chk"><input type="checkbox" id="compareChk"> 原圖對照</label>
+      <div class="zoomctl">
+        <button class="btn sm" id="zoomOut" aria-label="縮小">−</button>
+        <span class="z" id="zoomVal">100%</span>
+        <button class="btn sm" id="zoomIn" aria-label="放大">＋</button>
+        <button class="btn sm" id="zoomFit">適合寬度</button>
+      </div>
+    </div>
+    <div class="stage" id="stage">
+      <div class="sheet-wrap" id="sheetWrap"></div>
+    </div>
+    <div class="badge-row" id="badgeRow"></div>
+    <div class="actions">
+      <button class="btn" id="saveSnapBtn">另存圖面</button>
+      <button class="btn" id="openSnapBtn">開啟已存圖面</button>
+      <button class="btn primary" id="pngBtn">下載 PNG</button>
+      <button class="btn" id="printBtn">列印</button>
+    </div>
+  </section>
+</div>
+
+<div id="printArea"></div>
+<div id="modalHost"></div>
+<input type="file" id="fileInput" accept="application/json" hidden>
+
+<script>
+(function(){
+"use strict";
+
+/* ==========================================================================
+   1. 底圖資產與預設範本主檔
+   ── 要換成公司自己的圖組：替換 assets/ 內的 JPG 並改寫下方 SEED 即可，
+      其餘程式不需更動。座標一律以原圖像素為準。
+   ========================================================================== */
+
+const px = (x,y,w,h)=>({x,y,w,h});
+
+function field(o){
+  return Object.assign({
+    prefix:"", unit:"mm", defaultValue:"", defaultTolUpper:"", defaultTolLower:"",
+    required:true, fontSize:30, orientation:0, tolPosition:"right"
+  }, o);
+}
+
+// 三張同型（錐尖頂針）圖面共用的欄位語意，座標各自校準
+const SEED = [
+  {
+    id:"D4P001000001", name:"D4P001000001", typeGroup:"錐尖頂針 P", typeCode:"D4P",
+    asset:{ src:"assets/D4P001000001.jpg", w:1414, h:2000 },
+    info:{ drawNo:"D4P001000001", material:"碳化鎢 VA70 1PC ／ 模殼 SKD11 1PC", rev:"R0", note:"" },
+    frameRegion: px(40,1718,1345,272),
+    extraMasks: [],
+    fields:[
+      field({id:"D_outer", label:"凸緣外徑", prefix:"Ø", defaultValue:"59.00", mask:px(666,288,96,40), text:{x:713,y:307}}),
+      field({id:"D_mid",   label:"中段軸徑", prefix:"Ø", defaultValue:"47.00", mask:px(666,345,97,40), text:{x:714,y:364}}),
+      field({id:"D_pilot", label:"導柱徑",   prefix:"Ø", defaultValue:"20",    mask:px(686,409,58,42), text:{x:714,y:429}}),
+      field({id:"D_hole",  label:"中心孔徑", prefix:"Ø", defaultValue:"9.73",
+             defaultTolUpper:"+0.01", defaultTolLower:"+0", tolPosition:"above",
+             mask:px(675,461,81,87), text:{x:715,y:527}}),
+      field({id:"R_nose",  label:"尖端內圓角", prefix:"R", defaultValue:"0.5", mask:px(753,569,62,44), text:{x:784,y:590}}),
+      field({id:"H1", label:"段高 H1", defaultValue:"25",    orientation:-90, mask:px(986,732,38,36), text:{x:1005,y:750}}),
+      field({id:"H2", label:"段高 H2", defaultValue:"34.00", orientation:-90, mask:px(1057,761,38,74), text:{x:1076,y:798}}),
+      field({id:"H3", label:"段高 H3", defaultValue:"24.00", orientation:-90, mask:px(386,1124,40,78), text:{x:405,y:1162}}),
+      field({id:"H4", label:"段高 H4", defaultValue:"33.00", orientation:-90, mask:px(386,1323,40,74), text:{x:405,y:1359}}),
+      field({id:"H_total", label:"總長", defaultValue:"111.00", orientation:-90,
+             defaultTolUpper:"+0.10", defaultTolLower:"-0.10", tolPosition:"above",
+             mask:px(1103,972,66,128), text:{x:1149,y:1059}}),
+      field({id:"H5", label:"段高 H5", defaultValue:"75", orientation:-90, mask:px(969,1217,38,32), text:{x:988,y:1233}}),
+      field({id:"D_neck", label:"頸縮徑", prefix:"Ø", defaultValue:"22.20", mask:px(650,1491,134,44), text:{x:717,y:1511}}),
+      field({id:"D_base", label:"底徑", prefix:"Ø", defaultValue:"50.00",
+             defaultTolUpper:"-0.03", defaultTolLower:"-0.05",
+             mask:px(655,1551,190,64), text:{x:715,y:1594}})
+    ]
+  },
+  {
+    id:"B4P001000001", name:"B4P001000001", typeGroup:"錐尖頂針 P", typeCode:"B4P",
+    asset:{ src:"assets/B4P001000001.jpg", w:1414, h:2000 },
+    info:{ drawNo:"B4P001000001", material:"碳化鎢 VA70 1PC ／ 模殼 SKD11 1PC", rev:"R0", note:"" },
+    frameRegion: px(40,1718,1345,272),
+    extraMasks: [],
+    fields:[
+      field({id:"D_outer", label:"凸緣外徑", prefix:"Ø", defaultValue:"43.00", mask:px(622,222,111,46), text:{x:677,y:244}}),
+      field({id:"D_mid",   label:"中段軸徑", prefix:"Ø", defaultValue:"34.00", mask:px(622,319,111,46), text:{x:677,y:341}}),
+      field({id:"D_pilot", label:"導柱徑",   prefix:"Ø", defaultValue:"18",    mask:px(647,392,60,46), text:{x:677,y:415}}),
+      field({id:"D_hole",  label:"中心孔徑", prefix:"Ø", defaultValue:"7.76",
+             defaultTolUpper:"+0.01", defaultTolLower:"+0", tolPosition:"above",
+             mask:px(631,455,115,105), text:{x:680,y:533}}),
+      field({id:"R_nose",  label:"尖端內圓角", prefix:"R", defaultValue:"1", mask:px(644,568,66,54), text:{x:677,y:595}}),
+      field({id:"H1", label:"段高 H1", defaultValue:"20",   orientation:-90, mask:px(960,728,44,44), text:{x:982,y:748}}),
+      field({id:"H2", label:"段高 H2", defaultValue:"27.0", orientation:-90, mask:px(1038,764,44,66), text:{x:1060,y:797}}),
+      field({id:"H3", label:"段高 H3", defaultValue:"20.00", orientation:-90, mask:px(300,1115,46,86), text:{x:322,y:1157}}),
+      field({id:"H4", label:"段高 H4", defaultValue:"20.00", orientation:-90, mask:px(300,1313,46,84), text:{x:322,y:1355}}),
+      field({id:"H_total", label:"總長", defaultValue:"80.00", orientation:-90,
+             defaultTolUpper:"+0.10", defaultTolLower:"-0.10", tolPosition:"above",
+             mask:px(1104,968,70,134), text:{x:1151,y:1059}}),
+      field({id:"H5", label:"段高 H5", defaultValue:"48", orientation:-90, mask:px(952,1197,46,44), text:{x:975,y:1218}}),
+      field({id:"D_neck", label:"頸縮徑", prefix:"Ø", defaultValue:"22.20", mask:px(602,1530,142,46), text:{x:674,y:1552}}),
+      field({id:"D_base", label:"底徑", prefix:"Ø", defaultValue:"40.00",
+             defaultTolUpper:"-0.03", defaultTolLower:"-0.05",
+             mask:px(608,1593,200,66), text:{x:674,y:1641}})
+    ]
+  },
+  {
+    id:"C4P001000002", name:"C4P001000002", typeGroup:"錐尖頂針 P", typeCode:"C4P",
+    asset:{ src:"assets/C4P001000002.jpg", w:1414, h:2000 },
+    info:{ drawNo:"C4P001000002", material:"碳化鎢 VA70 1PC ／ 模殼 SKD61 1PC", rev:"R0", note:"" },
+    frameRegion: px(40,1718,1345,272),
+    extraMasks: [],
+    fields:[
+      field({id:"D_outer", label:"凸緣外徑", prefix:"Ø", defaultValue:"54.00", mask:px(663,284,97,40), text:{x:711,y:303}}),
+      field({id:"D_mid",   label:"中段軸徑", prefix:"Ø", defaultValue:"42.00", mask:px(663,340,98,40), text:{x:712,y:360}}),
+      field({id:"D_pilot", label:"導柱徑",   prefix:"Ø", defaultValue:"20",    mask:px(683,404,58,42), text:{x:712,y:424}}),
+      field({id:"D_hole",  label:"中心孔徑", prefix:"Ø", defaultValue:"9.73",
+             defaultTolUpper:"+0.01", defaultTolLower:"+0", tolPosition:"above",
+             mask:px(673,456,81,89), text:{x:713,y:523}}),
+      field({id:"R_nose",  label:"尖端內圓角", prefix:"R", defaultValue:"1", mask:px(738,566,50,44), text:{x:761,y:587}}),
+      field({id:"H1", label:"段高 H1", defaultValue:"20",    orientation:-90, mask:px(984,726,38,36), text:{x:1003,y:744}}),
+      field({id:"H2", label:"段高 H2", defaultValue:"30.00", orientation:-90, mask:px(1056,756,38,72), text:{x:1073,y:792}}),
+      field({id:"H3", label:"段高 H3", defaultValue:"21.00", orientation:-90, mask:px(386,1121,40,70), text:{x:405,y:1156}}),
+      field({id:"H4", label:"段高 H4", defaultValue:"43.00", orientation:-90, mask:px(386,1316,40,78), text:{x:405,y:1354}}),
+      field({id:"H_total", label:"總長", defaultValue:"110.00", orientation:-90,
+             defaultTolUpper:"+0.10", defaultTolLower:"-0.10", tolPosition:"above",
+             mask:px(1104,968,64,124), text:{x:1148,y:1052}}),
+      field({id:"H5", label:"段高 H5", defaultValue:"75", orientation:-90, mask:px(967,1210,38,34), text:{x:986,y:1226}}),
+      field({id:"D_neck", label:"頸縮徑", prefix:"Ø", defaultValue:"22.20", mask:px(650,1485,134,42), text:{x:716,y:1505}}),
+      field({id:"D_base", label:"底徑", prefix:"Ø", defaultValue:"45.00",
+             defaultTolUpper:"-0.03", defaultTolLower:"-0.05",
+             mask:px(650,1545,192,64), text:{x:715,y:1588}})
+    ]
+  },
+  {
+    id:"C4J002000001", name:"C4J002000001", typeGroup:"球頂／異型 J", typeCode:"C4J",
+    asset:{ src:"assets/C4J002000001.jpg", w:1414, h:2000 },
+    info:{ drawNo:"C4J002000001", material:"碳化鎢 VA70 1PC ／ 模殼 SKD61 1PC", rev:"R0", note:"" },
+    frameRegion: px(40,1718,1345,272),
+    extraMasks: [], fields:[]
+  },
+  {
+    id:"D4J013000001", name:"D4J013000001", typeGroup:"球頂／異型 J", typeCode:"D4J",
+    asset:{ src:"assets/D4J013000001.jpg", w:1414, h:2000 },
+    info:{ drawNo:"D4J013000001", material:"碳化鎢 VA80 1PC ／ 模殼 SKD61 1PC", rev:"R0", note:"" },
+    frameRegion: px(40,1718,1345,272),
+    extraMasks: [], fields:[]
+  }
+];
+
+const FORMAT_VERSION = 1;
+const MIN_MARQUEE = 12;          // 原圖像素：低於此值不建立欄位
+const UNDO_LIMIT  = 60;
+const SAVE_DEBOUNCE = 300;
+
+/* ==========================================================================
+   2. 工作區狀態
+   ========================================================================== */
+
+const clone = (o)=> (typeof structuredClone==="function" ? structuredClone(o) : JSON.parse(JSON.stringify(o)));
+const now = ()=> new Date().toISOString();
+const uid = (p)=> p + "_" + Math.random().toString(36).slice(2,8);
+
+function buildTemplate(seed){
+  const t = clone(seed);
+  t.version = 1;
+  t.fields = t.fields.map(f=>clone(f));
+  return t;
+}
+function newDraft(tpl){
+  const d = { templateId:tpl.id, template:clone(tpl), values:{}, info:clone(tpl.info), updatedAt:now() };
+  tpl.fields.forEach(f=>{
+    d.values[f.id] = { value:f.defaultValue, tolUpper:f.defaultTolUpper, tolLower:f.defaultTolLower };
+  });
+  return d;
+}
+function freshWorkspace(){
+  const ws = { formatVersion:FORMAT_VERSION, templates:{}, drafts:{}, saved:[],
+    ui:{ currentTemplateId:SEED[0].id, mode:"fill", selectedFieldId:null, category:"全部", zoom:1, compare:false } };
+  SEED.forEach(s=>{
+    const t = buildTemplate(s);
+    ws.templates[t.id] = t;
+    ws.drafts[t.id] = newDraft(t);
+  });
+  ws.ui.selectedFieldId = ws.templates[SEED[0].id].fields[0]?.id || null;
+  return ws;
+}
+
+let ws = freshWorkspace();
+let undoStack = [];
+let marquee = null;          // {x0,y0,x1,y1} 原圖座標
+let busyExport = false;
+const imageCache = new Map();
+
+const curTpl   = ()=> ws.templates[ws.ui.currentTemplateId];
+const curDraft = ()=> ws.drafts[ws.ui.currentTemplateId];
+const draftTpl = ()=> curDraft().template;   // 草稿自己持有的範本副本
+
+function checkpoint(){
+  undoStack.push(clone(ws));
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  document.getElementById("undoBtn").disabled = false;
+}
+function undo(){
+  const prev = undoStack.pop();
+  if (!prev) return;
+  ws = prev;
+  document.getElementById("undoBtn").disabled = undoStack.length===0;
+  marquee = null;
+  renderAll(); scheduleSave();
+}
+
+/* ==========================================================================
+   3. 本機保存（IndexedDB，去抖動 + 寫入佇列）
+   ========================================================================== */
+
+const store = (()=>{
+  const DB="tu-workshop", STORE="workspace", KEY="current";
+  let dbp=null;
+  function open(){
+    if (dbp) return dbp;
+    dbp = new Promise((res,rej)=>{
+      let req;
+      try { req = indexedDB.open(DB,1); } catch(e){ rej(e); return; }
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE); };
+      req.onsuccess = ()=> res(req.result);
+      req.onerror  = ()=> rej(req.error);
+    });
+    return dbp;
+  }
+  return {
+    async get(){
+      const db = await open();
+      return new Promise((res,rej)=>{
+        const r = db.transaction(STORE,"readonly").objectStore(STORE).get(KEY);
+        r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error);
+      });
+    },
+    async put(v){
+      const db = await open();
+      return new Promise((res,rej)=>{
+        const tx = db.transaction(STORE,"readwrite");
+        tx.objectStore(STORE).put(v,KEY);
+        tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
+      });
+    }
+  };
+})();
+
+let saveTimer=null, saveChain=Promise.resolve(), pendingSave=false;
+function setSaveState(s, text){
+  const el=document.getElementById("saveState");
+  el.dataset.s=s; document.getElementById("saveText").textContent=text;
+}
+function scheduleSave(){
+  pendingSave = true;
+  setSaveState("dirty","尚有變更待保存");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    const payload = clone(ws);
+    saveChain = saveChain.then(async ()=>{
+      setSaveState("saving","正在保存");
+      try{
+        await store.put(payload);
+        pendingSave = false;
+        setSaveState("saved","已保存到本機");
+      }catch(err){
+        setSaveState("error","保存失敗，請備份資料");
+      }
+    });
+  }, SAVE_DEBOUNCE);
+}
+
+/* ==========================================================================
+   4. 影像載入（轉 data URI，避免匯出時 canvas 受污染）
+   ========================================================================== */
+
+async function loadImage(src){
+  if (imageCache.has(src)) return imageCache.get(src);
+  const p = (async ()=>{
+    let href = src;
+    try{
+      const resp = await fetch(src);
+      if (resp.ok){
+        const blob = await resp.blob();
+        href = await new Promise((res,rej)=>{
+          const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error);
+          fr.readAsDataURL(blob);
+        });
+      }
+    }catch(e){ /* file:// 等情境退回直接載入 */ }
+    const img = new Image();
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=href; });
+    return { img, href };
+  })();
+  imageCache.set(src,p);
+  return p;
+}
+
+/* ==========================================================================
+   5. 合成計畫：預覽（SVG）與輸出（Canvas）共用同一份繪製資料
+   ========================================================================== */
+
+const measureCtx = document.createElement("canvas").getContext("2d");
+const FONT = (size, weight)=> `${weight||500} ${size}px "IBM Plex Mono", ui-monospace, monospace`;
+function measure(text,size,weight){ measureCtx.font = FONT(size,weight); return measureCtx.measureText(text).width; }
+
+function valueText(f, v){
+  const raw = (v && v.value!=null) ? String(v.value).trim() : "";
+  if (!raw) return f.required ? "" : "—";
+  return (f.prefix||"") + raw;
+}
+
+// 產生一個欄位的文字塊：主尺寸 + 公差（相對於文字中心的區域座標）
+function fieldTextBlock(f, v){
+  const main = valueText(f,v);
+  const size = f.fontSize;
+  const tolSize = Math.max(11, Math.round(size*0.5));
+  const items = [{ text:main, size, weight:600, dx:0, dy:0, align:"center", baseline:"middle" }];
+  const up = (v&&v.tolUpper||"").trim(), lo = (v&&v.tolLower||"").trim();
+  if (up || lo){
+    if (f.tolPosition==="above"){
+      if (up) items.push({ text:up, size:tolSize, weight:500, dx:0, dy:-(size*0.62+tolSize*1.35), align:"center", baseline:"middle" });
+      if (lo) items.push({ text:lo, size:tolSize, weight:500, dx:0, dy:-(size*0.62+tolSize*0.25), align:"center", baseline:"middle" });
+    } else {
+      const half = measure(main,size,600)/2 + tolSize*0.35;
+      if (up) items.push({ text:up, size:tolSize, weight:500, dx:half, dy:-tolSize*0.62, align:"left", baseline:"middle" });
+      if (lo) items.push({ text:lo, size:tolSize, weight:500, dx:half, dy: tolSize*0.62, align:"left", baseline:"middle" });
+    }
+  }
+  return { x:f.text.x, y:f.text.y, rotate:f.orientation||0, items };
+}
+
+// 試作圖框：回傳矩形、框線與文字，供兩個渲染器共用
+function buildFrame(region, info, tpl){
+  const {x,y,w,h} = region;
+  const rows = 3, rh = h/rows;
+  const cells = [
+    // row 1
+    { c:[x,          y,        w*0.30, rh], k:"狀態",     v:"試作圖（非正式發行）" },
+    { c:[x+w*0.30,   y,        w*0.26, rh], k:"圖號",     v:info.drawNo || "未填" },
+    { c:[x+w*0.56,   y,        w*0.14, rh], k:"版次",     v:info.rev || "未填" },
+    { c:[x+w*0.70,   y,        w*0.30, rh], k:"材質",     v:info.material || "未填" },
+    // row 2
+    { c:[x,          y+rh,     w*0.56, rh], k:"備註",     v:info.note || "—" },
+    { c:[x+w*0.56,   y+rh,     w*0.26, rh], k:"來源檔名", v:tpl.asset.src.split("/").pop() },
+    { c:[x+w*0.82,   y+rh,     w*0.18, rh], k:"範本版本", v:"v"+tpl.version },
+    // row 3
+    { c:[x,          y+rh*2,   w,      rh], k:"比例",     v:"不依比例，尺寸以標註為準；原圖簽核不延續至本衍生圖面" }
+  ];
+  return { rect:[x,y,w,h], cells };
+}
+
+function buildPlan(draft, opts){
+  const tpl = draft.template;
+  const masks = [];
+  (tpl.extraMasks||[]).forEach(m=> masks.push([m.x,m.y,m.w,m.h]));
+  tpl.fields.forEach(f=> masks.push([f.mask.x,f.mask.y,f.mask.w,f.mask.h]));
+  const texts = tpl.fields.map(f=> fieldTextBlock(f, draft.values[f.id]||{}));
+  return {
+    asset: tpl.asset,
+    masks,
+    texts,
+    frame: buildFrame(tpl.frameRegion, draft.info, tpl),
+    original: !!(opts && opts.original)
+  };
+}
+
+/* ---------- SVG 預覽 ---------- */
+const esc = (s)=> String(s).replace(/[&<>"]/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+
+function planToSVG(plan, href, editor){
+  const {w,h} = plan.asset;
+  const out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`);
+  out.push(`<image href="${esc(href)}" x="0" y="0" width="${w}" height="${h}"/>`);
+  if (!plan.original){
+    plan.masks.forEach(m=> out.push(`<rect x="${m[0]}" y="${m[1]}" width="${m[2]}" height="${m[3]}" fill="#ffffff"/>`));
+    plan.texts.forEach(t=>{
+      out.push(`<g transform="translate(${t.x} ${t.y}) rotate(${t.rotate})">`);
+      t.items.forEach(it=>{
+        if (!it.text) return;
+        out.push(`<text x="${it.dx}" y="${it.dy}" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="${it.size}" font-weight="${it.weight}" fill="#101010" text-anchor="${it.align==="left"?"start":"middle"}" dominant-baseline="central">${esc(it.text)}</text>`);
+      });
+      out.push(`</g>`);
+    });
+    const fr = plan.frame;
+    out.push(`<rect x="${fr.rect[0]}" y="${fr.rect[1]}" width="${fr.rect[2]}" height="${fr.rect[3]}" fill="#ffffff" stroke="#101010" stroke-width="3"/>`);
+    fr.cells.forEach(cell=>{
+      const [cx,cy,cw,ch] = cell.c;
+      out.push(`<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" fill="none" stroke="#101010" stroke-width="1.5"/>`);
+      out.push(`<text x="${cx+12}" y="${cy+26}" font-family="IBM Plex Sans, sans-serif" font-size="19" fill="#555555">${esc(cell.k)}</text>`);
+      out.push(`<text x="${cx+12}" y="${cy+63}" font-family="IBM Plex Mono, monospace" font-size="29" font-weight="600" fill="#101010">${esc(clipText(cell.v, cw-24, 29))}</text>`);
+    });
+  }
+  if (editor){
+    plan.masks.forEach(m=> out.push(`<rect x="${m[0]}" y="${m[1]}" width="${m[2]}" height="${m[3]}" fill="none" stroke="#2b5f8f" stroke-width="2" stroke-dasharray="8 5"/>`));
+    plan.texts.forEach(t=> out.push(`<circle cx="${t.x}" cy="${t.y}" r="7" fill="#e07b1f" stroke="#ffffff" stroke-width="2"/>`));
+  }
+  if (editor && editor.selectedMask){
+    const m = editor.selectedMask;
+    out.push(`<rect x="${m.x-6}" y="${m.y-6}" width="${m.w+12}" height="${m.h+12}" fill="none" stroke="#b85c10" stroke-width="4"/>`);
+  }
+  if (editor && editor.marquee){
+    const q = editor.marquee;
+    const x=Math.min(q.x0,q.x1), y=Math.min(q.y0,q.y1), mw=Math.abs(q.x1-q.x0), mh=Math.abs(q.y1-q.y0);
+    out.push(`<rect id="marqueeRect" x="${x}" y="${y}" width="${mw}" height="${mh}" fill="rgba(184,92,16,.16)" stroke="#b85c10" stroke-width="3"/>`);
+  }
+  out.push(`</svg>`);
+  return out.join("");
+}
+
+function clipText(text, maxW, size){
+  let t = String(text);
+  if (measure(t,size,600) <= maxW) return t;
+  while (t.length>1 && measure(t+"…",size,600) > maxW) t = t.slice(0,-1);
+  return t+"…";
+}
+
+/* ---------- Canvas 輸出 ---------- */
+function planToCanvas(plan, img){
+  const {w,h} = plan.asset;
+  const cv = document.createElement("canvas");
+  cv.width=w; cv.height=h;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,w,h);
+  ctx.drawImage(img,0,0,w,h);
+  ctx.fillStyle="#ffffff";
+  plan.masks.forEach(m=> ctx.fillRect(m[0],m[1],m[2],m[3]));
+  ctx.fillStyle="#101010";
+  plan.texts.forEach(t=>{
+    ctx.save();
+    ctx.translate(t.x,t.y); ctx.rotate(t.rotate*Math.PI/180);
+    t.items.forEach(it=>{
+      if (!it.text) return;
+      ctx.font = FONT(it.size,it.weight);
+      ctx.textAlign = it.align==="left" ? "left" : "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(it.text, it.dx, it.dy);
+    });
+    ctx.restore();
+  });
+  const fr = plan.frame;
+  ctx.fillStyle="#ffffff"; ctx.fillRect(fr.rect[0],fr.rect[1],fr.rect[2],fr.rect[3]);
+  ctx.strokeStyle="#101010"; ctx.lineWidth=3; ctx.strokeRect(fr.rect[0],fr.rect[1],fr.rect[2],fr.rect[3]);
+  fr.cells.forEach(cell=>{
+    const [cx,cy,cw,ch]=cell.c;
+    ctx.lineWidth=1.5; ctx.strokeRect(cx,cy,cw,ch);
+    ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    ctx.fillStyle="#555555"; ctx.font='500 19px "IBM Plex Sans", sans-serif';
+    ctx.fillText(cell.k, cx+12, cy+26);
+    ctx.fillStyle="#101010"; ctx.font=FONT(29,600);
+    ctx.fillText(clipText(cell.v, cw-24, 29), cx+12, cy+63);
+  });
+  return cv;
+}
+
+/* ==========================================================================
+   6. 輸出前檢查
+   ========================================================================== */
+function validateForOutput(draft){
+  const tpl = draft.template;
+  const missing = tpl.fields.filter(f=>{
+    const v = draft.values[f.id];
+    return f.required && !(v && String(v.value||"").trim());
+  }).map(f=>f.label+"（"+f.id+"）");
+  const warnings = [];
+  const note = (draft.info.note||"").trim();
+  if (note && measure(note, 29, 600) > tpl.frameRegion.w*0.56*2 - 48) warnings.push("備註過長，建議縮短後再輸出。");
+  if (!(draft.info.drawNo||"").trim()) warnings.push("圖號空白，圖框會顯示「未填」。");
+  if (!(draft.info.material||"").trim()) warnings.push("材質空白，圖框會顯示「未填」。");
+  return { missing, warnings, ok: missing.length===0 };
+}
+
+/* ==========================================================================
+   7. 畫面渲染
+   ========================================================================== */
+const $ = (id)=> document.getElementById(id);
+
+function renderCategories(){
+  const cats = ["全部", ...Array.from(new Set(Object.values(ws.templates).map(t=>t.typeGroup)))];
+  const sel = $("catFilter");
+  sel.innerHTML = cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  sel.value = cats.includes(ws.ui.category) ? ws.ui.category : "全部";
+}
+
+function renderTemplateList(){
+  const list = $("tplList");
+  const cat = ws.ui.category;
+  const items = Object.values(ws.templates).filter(t=> cat==="全部" || t.typeGroup===cat);
+  $("tplCount").textContent = items.length + " 張";
+  list.innerHTML = "";
+  items.forEach(t=>{
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.className="tpl-item"; b.type="button";
+    b.setAttribute("aria-current", String(t.id===ws.ui.currentTemplateId));
+    b.innerHTML =
+      `<img src="${esc(t.asset.src)}" alt="">` +
+      `<span><span class="name">${esc(t.name)}</span><br>` +
+      `<span class="meta">${esc(t.typeGroup)}</span><br>` +
+      `<span class="count">可填尺寸 ${t.fields.length}</span></span>`;
+    b.addEventListener("click", ()=> switchTemplate(t.id));
+    li.appendChild(b); list.appendChild(li);
+  });
+}
+
+function switchTemplate(id){
+  if (id===ws.ui.currentTemplateId) return;
+  checkpoint();
+  ws.ui.currentTemplateId = id;
+  ws.ui.selectedFieldId = draftTpl().fields[0]?.id || null;
+  ws.ui.compare = false;
+  marquee = null;
+  renderAll(); scheduleSave();
+}
+
+/* ---------- 填寫尺寸 ---------- */
+function renderFillPanel(){
+  const d = curDraft(), tpl = d.template;
+  const host = $("panel");
+  host.innerHTML = "";
+
+  if (!tpl.fields.length){
+    const n = document.createElement("div");
+    n.className="empty-note";
+    n.innerHTML = "這張圖尚未設定可填尺寸，原圖內容維持可查看。<br>請切換到「設定範本」，用框選工具建立欄位。";
+    host.appendChild(n);
+  }
+
+  tpl.fields.forEach(f=>{
+    const v = d.values[f.id] || {value:"",tolUpper:"",tolLower:""};
+    const row = document.createElement("div");
+    row.className="dim-row";
+    row.dataset.fieldrow = f.id;
+    row.dataset.sel = String(ws.ui.selectedFieldId===f.id);
+    row.innerHTML =
+      `<div class="top"><span class="lbl">${esc(f.label)} ${f.required?'<span class="req">必填</span>':''}</span>`+
+      `<span class="fid">${esc(f.id)}</span></div>`+
+      `<div class="dim-grid">`+
+        `<div><label for="v-${f.id}">尺寸（${esc(f.unit)}）</label><input id="v-${f.id}" type="text" value="${esc(v.value)}"></div>`+
+        `<div><label for="tu-${f.id}">上公差</label><input id="tu-${f.id}" type="text" value="${esc(v.tolUpper)}"></div>`+
+        `<div><label for="tl-${f.id}">下公差</label><input id="tl-${f.id}" type="text" value="${esc(v.tolLower)}"></div>`+
+      `</div>`+
+      (f.prefix?`<div class="prefix-hint">圖面顯示前綴「${esc(f.prefix)}」，輸入值不需重複加入。</div>`:``);
+    row.addEventListener("mousedown", ()=>{ selectField(f.id); });
+    host.appendChild(row);
+
+    const vi=$("v-"+f.id), tu=$("tu-"+f.id), tl=$("tl-"+f.id);
+    if (f.required && !String(v.value||"").trim()) vi.classList.add("empty-required");
+    [["value",vi],["tolUpper",tu],["tolLower",tl]].forEach(([key,el])=>{
+      el.addEventListener("focus", checkpoint);
+      el.addEventListener("input", ()=>{
+        const dd = curDraft();
+        dd.values[f.id] = dd.values[f.id] || {value:"",tolUpper:"",tolLower:""};
+        dd.values[f.id][key] = el.value;
+        dd.updatedAt = now();
+        if (key==="value") vi.classList.toggle("empty-required", f.required && !el.value.trim());
+        renderPreview(); renderBadges(); scheduleSave();
+      });
+    });
+  });
+
+  // 圖面資訊
+  const box = document.createElement("div");
+  box.className="set-block";
+  box.innerHTML =
+    `<div class="hd"><span class="t">圖面資訊</span></div>`+
+    `<div class="set-body info-grid">`+
+      `<div><label for="i-drawNo">圖號</label><input id="i-drawNo" type="text" value="${esc(d.info.drawNo)}"></div>`+
+      `<div><label for="i-material">材質</label><input id="i-material" type="text" value="${esc(d.info.material)}"></div>`+
+      `<div class="g2">`+
+        `<div><label for="i-rev">版次（手動）</label><input id="i-rev" type="text" value="${esc(d.info.rev)}"></div>`+
+        `<div><label for="i-note">備註</label><input id="i-note" type="text" value="${esc(d.info.note)}"></div>`+
+      `</div>`+
+    `</div>`;
+  host.appendChild(box);
+  ["drawNo","material","rev","note"].forEach(k=>{
+    const el = $("i-"+k);
+    el.addEventListener("focus", checkpoint);
+    el.addEventListener("input", ()=>{
+      curDraft().info[k]=el.value; curDraft().updatedAt=now();
+      renderPreview(); renderBadges(); scheduleSave();
+    });
+  });
+}
+
+// 只更新選取標示，不重建面板（重建會讓使用者點到的輸入框失去焦點）
+function selectField(id){
+  if (ws.ui.selectedFieldId===id) return;
+  ws.ui.selectedFieldId = id;
+  document.querySelectorAll("[data-fieldrow]").forEach(r=>{
+    r.dataset.sel = String(r.dataset.fieldrow===id);
+  });
+  renderPreview(); scheduleSave();
+}
+
+/* ---------- 設定範本 ---------- */
+function renderSetPanel(){
+  const d = curDraft(), tpl = d.template;
+  const host = $("panel");
+  host.innerHTML = "";
+
+  const bar = document.createElement("div");
+  bar.className="set-block";
+  bar.innerHTML =
+    `<div class="hd"><span class="t">範本設定</span><span class="fid mono">v${tpl.version}</span></div>`+
+    `<div class="set-body">`+
+      `<div class="nudge">`+
+        `<button class="btn primary sm" id="marqueeBtn" type="button">框選新尺寸</button>`+
+        `<button class="btn sm" id="maskOnlyBtn" type="button">框選額外遮罩</button>`+
+      `</div>`+
+      `<div class="nudge">`+
+        `<button class="btn sm" id="saveTplBtn" type="button">保存範本新版</button>`+
+        `<button class="btn sm" id="fromTplBtn" type="button">依已存範本建立新草稿</button>`+
+      `</div>`+
+      `<div class="prefix-hint">框選只記錄位置，不辨識框內數字；舊值仍需人工輸入。遮罩請避開尺寸線與輪廓。</div>`+
+    `</div>`;
+  host.appendChild(bar);
+
+  $("marqueeBtn").addEventListener("click", ()=> startMarquee("field"));
+  $("maskOnlyBtn").addEventListener("click", ()=> startMarquee("mask"));
+  $("saveTplBtn").addEventListener("click", saveTemplateVersion);
+  $("fromTplBtn").addEventListener("click", newDraftFromTemplate);
+
+  (tpl.extraMasks||[]).forEach((m,i)=>{
+    const b=document.createElement("div");
+    b.className="set-block";
+    b.innerHTML = `<div class="hd"><span class="t">額外遮罩 ${i+1} <span class="fid">${esc(m.id)}</span></span>`+
+      `<button class="btn sm" type="button" data-del-mask="${esc(m.id)}">移除</button></div>`;
+    host.appendChild(b);
+    b.querySelector("[data-del-mask]").addEventListener("click", ()=>{
+      checkpoint();
+      const t=draftTpl(); t.extraMasks = t.extraMasks.filter(x=>x.id!==m.id);
+      renderPanel(); renderPreview(); scheduleSave();
+    });
+  });
+
+  tpl.fields.forEach(f=>{
+    const blk = document.createElement("div");
+    blk.className="set-block";
+    blk.dataset.sel = String(ws.ui.selectedFieldId===f.id);
+    blk.dataset.fieldrow = f.id;
+    blk.innerHTML =
+      `<div class="hd"><span class="t">${esc(f.label)} <span class="fid">${esc(f.id)}</span></span>`+
+        `<button class="btn sm" type="button" data-del="${esc(f.id)}">移除欄位</button></div>`+
+      `<div class="set-body">`+
+        `<div class="g2">`+
+          `<div><label for="s-label-${f.id}">欄位名稱</label><input id="s-label-${f.id}" type="text" value="${esc(f.label)}"></div>`+
+          `<div><label for="s-unit-${f.id}">單位</label><input id="s-unit-${f.id}" type="text" value="${esc(f.unit)}"></div>`+
+        `</div>`+
+        `<div class="g3">`+
+          `<div><label for="s-prefix-${f.id}">前綴</label><input id="s-prefix-${f.id}" type="text" value="${esc(f.prefix)}"></div>`+
+          `<div><label for="s-default-${f.id}">預設尺寸</label><input id="s-default-${f.id}" type="text" value="${esc(f.defaultValue)}"></div>`+
+          `<div><label for="s-font-${f.id}">字級(px)</label><input id="s-font-${f.id}" type="number" min="8" max="120" value="${f.fontSize}"></div>`+
+        `</div>`+
+        `<div class="g2">`+
+          `<div><label for="s-tu-${f.id}">預設上公差</label><input id="s-tu-${f.id}" type="text" value="${esc(f.defaultTolUpper)}"></div>`+
+          `<div><label for="s-tl-${f.id}">預設下公差</label><input id="s-tl-${f.id}" type="text" value="${esc(f.defaultTolLower)}"></div>`+
+        `</div>`+
+        `<div class="g2">`+
+          `<div><label for="s-orient-${f.id}">方向</label><select id="s-orient-${f.id}">`+
+            `<option value="0"${f.orientation===0?" selected":""}>水平</option>`+
+            `<option value="-90"${f.orientation===-90?" selected":""}>直向向上</option>`+
+            `<option value="90"${f.orientation===90?" selected":""}>直向向下</option>`+
+          `</select></div>`+
+          `<div><label for="s-tolpos-${f.id}">公差位置</label><select id="s-tolpos-${f.id}">`+
+            `<option value="right"${f.tolPosition==="right"?" selected":""}>主尺寸右側</option>`+
+            `<option value="above"${f.tolPosition==="above"?" selected":""}>主尺寸上方</option>`+
+          `</select></div>`+
+        `</div>`+
+        `<div class="g4">`+
+          `<div><label for="s-mx-${f.id}">遮罩X</label><input id="s-mx-${f.id}" type="number" value="${f.mask.x}"></div>`+
+          `<div><label for="s-my-${f.id}">遮罩Y</label><input id="s-my-${f.id}" type="number" value="${f.mask.y}"></div>`+
+          `<div><label for="s-mw-${f.id}">寬</label><input id="s-mw-${f.id}" type="number" min="4" value="${f.mask.w}"></div>`+
+          `<div><label for="s-mh-${f.id}">高</label><input id="s-mh-${f.id}" type="number" min="4" value="${f.mask.h}"></div>`+
+        `</div>`+
+        `<div class="g2">`+
+          `<div><label for="s-tx-${f.id}">文字中心X</label><input id="s-tx-${f.id}" type="number" value="${f.text.x}"></div>`+
+          `<div><label for="s-ty-${f.id}">文字中心Y</label><input id="s-ty-${f.id}" type="number" value="${f.text.y}"></div>`+
+        `</div>`+
+        `<div class="nudge">`+
+          `<span class="prefix-hint">微調文字（每次 2px）：</span>`+
+          `<button class="btn sm" type="button" data-nudge="${esc(f.id)}:0:-2">↑</button>`+
+          `<button class="btn sm" type="button" data-nudge="${esc(f.id)}:0:2">↓</button>`+
+          `<button class="btn sm" type="button" data-nudge="${esc(f.id)}:-2:0">←</button>`+
+          `<button class="btn sm" type="button" data-nudge="${esc(f.id)}:2:0">→</button>`+
+          `<button class="btn sm" type="button" data-center="${esc(f.id)}">置中到遮罩</button>`+
+        `</div>`+
+        `<label class="chk"><input type="checkbox" id="s-req-${f.id}"${f.required?" checked":""}> 必填（輸出前檢查是否空白）</label>`+
+      `</div>`;
+    host.appendChild(blk);
+    blk.addEventListener("mousedown", (e)=>{ if (!e.target.closest("button")) selectField(f.id); });
+    wireFieldSettings(f);
+  });
+}
+
+function wireFieldSettings(f){
+  const tplField = ()=> draftTpl().fields.find(x=>x.id===f.id);
+  const num = (el)=>{ const n=parseFloat(el.value); return isFinite(n)?n:null; };
+
+  const textBinds = [["s-label-","label"],["s-unit-","unit"],["s-prefix-","prefix"]];
+  textBinds.forEach(([p,key])=>{
+    const el=$(p+f.id); if(!el) return;
+    el.addEventListener("focus", checkpoint);
+    el.addEventListener("input", ()=>{ tplField()[key]=el.value; renderPreview(); scheduleSave(); });
+  });
+
+  // 預設值／預設公差：同時更新目前草稿（規格 §5）
+  [["s-default-","defaultValue","value"],["s-tu-","defaultTolUpper","tolUpper"],["s-tl-","defaultTolLower","tolLower"]]
+  .forEach(([p,tkey,vkey])=>{
+    const el=$(p+f.id); if(!el) return;
+    el.addEventListener("focus", checkpoint);
+    el.addEventListener("input", ()=>{
+      tplField()[tkey]=el.value;
+      const d=curDraft();
+      d.values[f.id]=d.values[f.id]||{value:"",tolUpper:"",tolLower:""};
+      d.values[f.id][vkey]=el.value; d.updatedAt=now();
+      renderPreview(); renderBadges(); scheduleSave();
+    });
+  });
+
+  const fontEl=$("s-font-"+f.id);
+  fontEl.addEventListener("focus", checkpoint);
+  fontEl.addEventListener("input", ()=>{
+    const n=num(fontEl);
+    if (n===null || n<8 || n>120){ fontEl.setCustomValidity("請輸入 8–120 的字級"); fontEl.reportValidity?.(); return; }
+    fontEl.setCustomValidity("");
+    tplField().fontSize=n; renderPreview(); scheduleSave();
+  });
+
+  ["s-orient-","s-tolpos-"].forEach(p=>{
+    const el=$(p+f.id);
+    el.addEventListener("change", ()=>{
+      checkpoint();
+      if (p==="s-orient-") tplField().orientation = parseInt(el.value,10);
+      else tplField().tolPosition = el.value;
+      renderPreview(); scheduleSave();
+    });
+  });
+
+  const asset = ()=> draftTpl().asset;
+  [["s-mx-","mask","x"],["s-my-","mask","y"],["s-mw-","mask","w"],["s-mh-","mask","h"],
+   ["s-tx-","text","x"],["s-ty-","text","y"]].forEach(([p,grp,key])=>{
+    const el=$(p+f.id);
+    el.addEventListener("focus", checkpoint);
+    el.addEventListener("input", ()=>{
+      const n=num(el); if (n===null) return;
+      const lim = (key==="x"||key==="w") ? asset().w : asset().h;
+      const v = Math.max((grp==="mask"&&(key==="w"||key==="h"))?4:0, Math.min(n, lim));
+      tplField()[grp][key]=v;
+      renderPreview(); scheduleSave();
+    });
+  });
+
+  const reqEl=$("s-req-"+f.id);
+  reqEl.addEventListener("change", ()=>{ checkpoint(); tplField().required=reqEl.checked; renderPanel(); renderBadges(); scheduleSave(); });
+}
+
+// 事件代理：移除欄位 / 微調 / 置中
+document.addEventListener("click",(e)=>{
+  const del = e.target.closest("[data-del]");
+  if (del){
+    checkpoint();
+    const id = del.getAttribute("data-del");
+    const t = draftTpl();
+    t.fields = t.fields.filter(x=>x.id!==id);
+    delete curDraft().values[id];
+    if (ws.ui.selectedFieldId===id) ws.ui.selectedFieldId = t.fields[0]?.id || null;
+    renderPanel(); renderPreview(); renderBadges(); scheduleSave();
+    return;
+  }
+  const nd = e.target.closest("[data-nudge]");
+  if (nd){
+    checkpoint();
+    const [id,dx,dy] = nd.getAttribute("data-nudge").split(":");
+    const f = draftTpl().fields.find(x=>x.id===id);
+    if (f){ f.text.x += parseInt(dx,10); f.text.y += parseInt(dy,10); renderPanel(); renderPreview(); scheduleSave(); }
+    return;
+  }
+  const ct = e.target.closest("[data-center]");
+  if (ct){
+    checkpoint();
+    const f = draftTpl().fields.find(x=>x.id===ct.getAttribute("data-center"));
+    if (f){ f.text.x = Math.round(f.mask.x+f.mask.w/2); f.text.y = Math.round(f.mask.y+f.mask.h/2);
+      renderPanel(); renderPreview(); scheduleSave(); }
+  }
+});
+
+function renderPanel(){
+  $("tabFill").setAttribute("aria-selected", String(ws.ui.mode==="fill"));
+  $("tabSet").setAttribute("aria-selected", String(ws.ui.mode==="set"));
+  if (ws.ui.mode==="fill") renderFillPanel(); else renderSetPanel();
+}
+
+/* ---------- 預覽 ---------- */
+let previewToken = 0;
+async function renderPreview(){
+  const token = ++previewToken;
+  const d = curDraft(), tpl = d.template;
+  $("pvTitle").textContent = tpl.name + "　" + (d.info.drawNo||"未填圖號");
+  $("zoomVal").textContent = Math.round(ws.ui.zoom*100)+"%";
+  $("compareChk").checked = !!ws.ui.compare;
+
+  const wrap = $("sheetWrap");
+  let href;
+  try { href = (await loadImage(tpl.asset.src)).href; }
+  catch(e){ wrap.innerHTML = `<div style="padding:24px;color:#b8391f">底圖載入失敗：${esc(tpl.asset.src)}</div>`; return; }
+  if (token!==previewToken) return;
+
+  const plan = buildPlan(d, { original: !!ws.ui.compare });
+  const editor = (ws.ui.mode==="set" && !ws.ui.compare) ? {
+    selectedMask: (tpl.fields.find(f=>f.id===ws.ui.selectedFieldId)||{}).mask,
+    marquee
+  } : (marquee ? { marquee } : null);
+
+  wrap.innerHTML = planToSVG(plan, href, editor);
+  const svg = wrap.querySelector("svg");
+  const shownW = Math.round(tpl.asset.w * ws.ui.zoom);
+  svg.setAttribute("width", shownW);
+  svg.setAttribute("height", Math.round(tpl.asset.h*ws.ui.zoom));
+  wrap.style.width = shownW+"px";
+  wrap.classList.toggle("marquee-on", !!marqueeMode);
+}
+
+function renderBadges(){
+  const d = curDraft();
+  const r = validateForOutput(d);
+  const host = $("badgeRow");
+  const bits = [];
+  bits.push(`<span class="badge">可填尺寸 ${d.template.fields.length}</span>`);
+  bits.push(`<span class="badge">範本 v${d.template.version}</span>`);
+  bits.push(`<span class="badge">已存圖面 ${ws.saved.filter(s=>s.draft.templateId===d.templateId).length}</span>`);
+  if (r.missing.length) bits.push(`<span class="badge warn">必填未完成 ${r.missing.length}</span>`);
+  else bits.push(`<span class="badge ok">必填已完成</span>`);
+  if (ws.ui.compare) bits.push(`<span class="badge info">原圖對照中（輸出仍為衍生圖）</span>`);
+  if (marqueeMode) bits.push(`<span class="badge info">框選中，Esc 取消</span>`);
+  host.innerHTML = bits.join("");
+}
+
+function renderAll(){
+  renderCategories(); renderTemplateList(); renderPanel(); renderPreview(); renderBadges();
+  $("undoBtn").disabled = undoStack.length===0;
+}
+
+/* ==========================================================================
+   8. 框選
+   ========================================================================== */
+let marqueeMode = null;   // 'field' | 'mask' | null
+function startMarquee(kind){
+  marqueeMode = kind; marquee = null;
+  renderPreview(); renderBadges();
+}
+function cancelMarquee(){
+  if (!marqueeMode && !marquee) return;
+  marqueeMode = null; marquee = null;
+  renderPreview(); renderBadges();
+}
+document.addEventListener("keydown",(e)=>{ if (e.key==="Escape") cancelMarquee(); });
+
+function toImageCoords(evt){
+  const svg = $("sheetWrap").querySelector("svg");
+  if (!svg) return null;
+  const r = svg.getBoundingClientRect();
+  const tpl = draftTpl();
+  return {
+    x: Math.round((evt.clientX-r.left)/r.width * tpl.asset.w),
+    y: Math.round((evt.clientY-r.top)/r.height * tpl.asset.h)
+  };
+}
+
+$("sheetWrap").addEventListener("pointerdown",(e)=>{
+  if (!marqueeMode){
+    // 點圖上的欄位區域 → 回到表格
+    const p = toImageCoords(e); if (!p) return;
+    const hit = draftTpl().fields.find(f=> p.x>=f.mask.x && p.x<=f.mask.x+f.mask.w && p.y>=f.mask.y && p.y<=f.mask.y+f.mask.h);
+    if (hit){
+      selectField(hit.id);
+      const el = $((ws.ui.mode==="fill"?"v-":"s-label-")+hit.id);
+      if (el){ el.focus(); el.scrollIntoView({block:"center"}); }
+    }
+    return;
+  }
+  const p = toImageCoords(e); if (!p) return;
+  marquee = { x0:p.x, y0:p.y, x1:p.x, y1:p.y };
+  $("sheetWrap").setPointerCapture?.(e.pointerId);
+  renderPreview();
+});
+$("sheetWrap").addEventListener("pointermove",(e)=>{
+  if (!marqueeMode || !marquee) return;
+  const p = toImageCoords(e); if (!p) return;
+  marquee.x1=p.x; marquee.y1=p.y;
+  // 拖曳中只更新選取框，避免整張圖重繪
+  const r = document.getElementById("marqueeRect");
+  if (r){
+    r.setAttribute("x", Math.min(marquee.x0,marquee.x1));
+    r.setAttribute("y", Math.min(marquee.y0,marquee.y1));
+    r.setAttribute("width", Math.abs(marquee.x1-marquee.x0));
+    r.setAttribute("height", Math.abs(marquee.y1-marquee.y0));
+  } else renderPreview();
+});
+$("sheetWrap").addEventListener("pointerup",()=>{
+  if (!marqueeMode || !marquee) return;
+  const x=Math.min(marquee.x0,marquee.x1), y=Math.min(marquee.y0,marquee.y1);
+  const w=Math.abs(marquee.x1-marquee.x0), h=Math.abs(marquee.y1-marquee.y0);
+  const kind = marqueeMode;
+  marqueeMode=null; marquee=null;
+  if (w<MIN_MARQUEE || h<MIN_MARQUEE){
+    toast("框選範圍太小，未建立欄位或遮罩。", "warn");
+    renderPreview(); renderBadges(); return;
+  }
+  if (kind==="mask"){
+    checkpoint();
+    draftTpl().extraMasks.push({ id:uid("mask"), x,y,w,h });
+    renderPanel(); renderPreview(); scheduleSave();
+    return;
+  }
+  openNewFieldDialog({x,y,w,h});
+});
+
+/* ==========================================================================
+   9. 對話框
+   ========================================================================== */
+function closeModal(){ $("modalHost").innerHTML=""; }
+function openModal(title, bodyHTML, footerHTML){
+  $("modalHost").innerHTML =
+    `<div class="modal-back" id="modalBack"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">`+
+    `<header><h3>${esc(title)}</h3><button class="btn sm ghost" id="mClose" type="button">關閉</button></header>`+
+    `<div class="mbody">${bodyHTML}</div>`+
+    (footerHTML?`<footer>${footerHTML}</footer>`:``)+
+    `</div></div>`;
+  $("mClose").addEventListener("click", closeModal);
+  $("modalBack").addEventListener("mousedown",(e)=>{ if (e.target.id==="modalBack") closeModal(); });
+}
+function toast(text, kind){
+  openModal("提示", `<div class="msg ${kind||"info"}">${esc(text)}</div>`, `<button class="btn" type="button" id="tOk">知道了</button>`);
+  $("tOk").addEventListener("click", closeModal);
+}
+
+function openNewFieldDialog(rect){
+  openModal("新增可填尺寸",
+    `<div class="msg info">框選只記錄位置，不會辨識框內數字。舊值請人工讀取後輸入。</div>`+
+    `<div class="set-body" style="padding:0">`+
+      `<div class="g2">`+
+        `<div><label for="nf-label">欄位名稱</label><input id="nf-label" type="text" placeholder="例如：入口直徑"></div>`+
+        `<div><label for="nf-id">欄位識別碼</label><input id="nf-id" type="text" placeholder="例如：D_in"></div>`+
+      `</div>`+
+      `<div class="g3">`+
+        `<div><label for="nf-prefix">前綴</label><input id="nf-prefix" type="text" placeholder="Ø / R"></div>`+
+        `<div><label for="nf-unit">單位</label><input id="nf-unit" type="text" value="mm"></div>`+
+        `<div><label for="nf-font">字級(px)</label><input id="nf-font" type="number" value="30" min="8" max="120"></div>`+
+      `</div>`+
+      `<div class="g3">`+
+        `<div><label for="nf-default">預設尺寸</label><input id="nf-default" type="text" placeholder="留白＝空白必填"></div>`+
+        `<div><label for="nf-tu">預設上公差</label><input id="nf-tu" type="text"></div>`+
+        `<div><label for="nf-tl">預設下公差</label><input id="nf-tl" type="text"></div>`+
+      `</div>`+
+      `<div class="g2">`+
+        `<div><label for="nf-orient">方向</label><select id="nf-orient">`+
+          `<option value="0">水平</option><option value="-90">直向向上</option><option value="90">直向向下</option></select></div>`+
+        `<div><label for="nf-tolpos">公差位置</label><select id="nf-tolpos">`+
+          `<option value="right">主尺寸右側</option><option value="above">主尺寸上方</option></select></div>`+
+      `</div>`+
+      `<label class="chk" style="margin-top:8px"><input type="checkbox" id="nf-req" checked> 必填</label>`+
+      `<div class="prefix-hint">遮罩：x ${rect.x}, y ${rect.y}, 寬 ${rect.w}, 高 ${rect.h}（文字預設置中於遮罩）</div>`+
+    `</div>`,
+    `<button class="btn" type="button" id="nfCancel">取消</button><button class="btn primary" type="button" id="nfOk">建立欄位</button>`);
+
+  $("nf-label").focus();
+  $("nfCancel").addEventListener("click", ()=>{ closeModal(); renderPreview(); renderBadges(); });
+  $("nfOk").addEventListener("click", ()=>{
+    const label = $("nf-label").value.trim();
+    let id = $("nf-id").value.trim();
+    if (!label){ $("nf-label").focus(); return; }
+    id = id.replace(/[^\w-]/g,"_");
+    if (!id) id = "F_"+Math.random().toString(36).slice(2,6);
+    if (draftTpl().fields.some(f=>f.id===id)){ toast("欄位識別碼重複，請換一個。","warn"); return; }
+    const fs = parseInt($("nf-font").value,10);
+    checkpoint();
+    const f = field({
+      id, label,
+      prefix:$("nf-prefix").value.trim(),
+      unit:$("nf-unit").value.trim()||"mm",
+      defaultValue:$("nf-default").value.trim(),
+      defaultTolUpper:$("nf-tu").value.trim(),
+      defaultTolLower:$("nf-tl").value.trim(),
+      required:$("nf-req").checked,
+      fontSize:(isFinite(fs)&&fs>=8&&fs<=120)?fs:30,
+      orientation:parseInt($("nf-orient").value,10),
+      tolPosition:$("nf-tolpos").value,
+      mask:{x:rect.x,y:rect.y,w:rect.w,h:rect.h},
+      text:{x:Math.round(rect.x+rect.w/2), y:Math.round(rect.y+rect.h/2)}
+    });
+    draftTpl().fields.push(f);
+    const d=curDraft();
+    d.values[id]={ value:f.defaultValue, tolUpper:f.defaultTolUpper, tolLower:f.defaultTolLower };
+    d.updatedAt=now();
+    ws.ui.selectedFieldId=id;
+    closeModal(); renderPanel(); renderPreview(); renderBadges(); scheduleSave();
+  });
+}
+
+/* ==========================================================================
+   10. 範本版本 / 快照
+   ========================================================================== */
+function saveTemplateVersion(){
+  checkpoint();
+  const d = curDraft();
+  const t = clone(d.template);
+  t.version = (ws.templates[d.templateId]?.version || 0) + 1;
+  // 以目前草稿的實際值作為新的預設值
+  t.fields.forEach(f=>{
+    const v = d.values[f.id];
+    if (v){ f.defaultValue=v.value; f.defaultTolUpper=v.tolUpper; f.defaultTolLower=v.tolLower; }
+  });
+  t.info = clone(d.info);
+  ws.templates[d.templateId] = t;
+  d.template = clone(t);
+  renderAll(); scheduleSave();
+  toast("已保存為範本 v"+t.version+"。既有其他草稿與舊快照不受影響。","ok");
+}
+
+function newDraftFromTemplate(){
+  openModal("依已存範本建立新草稿",
+    `<div class="msg warn">會以最新範本主檔的預設值取代目前草稿內容，未保存的調整將被覆蓋（可用「復原」返回）。</div>`,
+    `<button class="btn" type="button" id="ndCancel">取消</button><button class="btn primary" type="button" id="ndOk">建立新草稿</button>`);
+  $("ndCancel").addEventListener("click", closeModal);
+  $("ndOk").addEventListener("click", ()=>{
+    checkpoint();
+    const t = ws.templates[ws.ui.currentTemplateId];
+    ws.drafts[t.id] = newDraft(t);
+    ws.ui.selectedFieldId = t.fields[0]?.id || null;
+    closeModal(); renderAll(); scheduleSave();
+  });
+}
+
+function saveSnapshot(){
+  const d = curDraft();
+  const def = (d.info.drawNo||d.template.name) + " " + new Date().toLocaleString("zh-TW",{hour12:false});
+  openModal("另存圖面",
+    `<div class="msg info">建立目前草稿的獨立快照。快照含範本副本，日後修改範本不會改寫這張圖。<br>不配發正式圖號、不檢查工程規格、不自動下載圖檔。</div>`+
+    `<div><label for="snName">名稱</label><input id="snName" type="text" value="${esc(def)}"></div>`,
+    `<button class="btn" type="button" id="snCancel">取消</button><button class="btn primary" type="button" id="snOk">另存</button>`);
+  $("snCancel").addEventListener("click", closeModal);
+  $("snOk").addEventListener("click", ()=>{
+    checkpoint();
+    ws.saved.unshift({ id:uid("snap"), name:$("snName").value.trim()||def, savedAt:now(), draft:clone(curDraft()) });
+    closeModal(); renderBadges(); scheduleSave();
+    toast("已另存圖面快照。","ok");
+  });
+}
+
+function openSnapshots(){
+  if (!ws.saved.length){ toast("目前沒有已存圖面。","info"); return; }
+  const rows = ws.saved.map(s=>
+    `<li><span><span class="nm">${esc(s.name)}</span><br>`+
+    `<span class="dt">${esc(s.draft.templateId)} · ${esc(new Date(s.savedAt).toLocaleString("zh-TW",{hour12:false}))}</span></span>`+
+    `<span style="display:flex;gap:6px"><button class="btn sm primary" type="button" data-open="${esc(s.id)}">開啟</button>`+
+    `<button class="btn sm" type="button" data-rm="${esc(s.id)}">刪除</button></span></li>`).join("");
+  openModal("開啟已存圖面",
+    `<div class="msg warn">開啟會直接取代該範本目前的工作草稿，沒有額外確認；可用「復原」返回。重要草稿請先另存。</div>`+
+    `<ul class="snap-list">${rows}</ul>`, "");
+  $("modalHost").querySelectorAll("[data-open]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const snap = ws.saved.find(s=>s.id===btn.getAttribute("data-open"));
+      if (!snap) return;
+      checkpoint();
+      ws.drafts[snap.draft.templateId] = clone(snap.draft);
+      ws.ui.currentTemplateId = snap.draft.templateId;
+      ws.ui.selectedFieldId = snap.draft.template.fields[0]?.id || null;
+      ws.ui.compare = false;
+      closeModal(); renderAll(); scheduleSave();
+    });
+  });
+  $("modalHost").querySelectorAll("[data-rm]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      checkpoint();
+      ws.saved = ws.saved.filter(s=>s.id!==btn.getAttribute("data-rm"));
+      closeModal(); renderBadges(); scheduleSave();
+      if (ws.saved.length) openSnapshots();
+    });
+  });
+}
+
+/* ==========================================================================
+   11. 輸出
+   ========================================================================== */
+
+// 存檔：優先用平台的下載能力（線上檢視時），否則退回瀏覽器下載連結（本機使用時）
+let downloadsNs;   // undefined=尚未詢問, null=不可用
+async function getDownloads(){
+  if (downloadsNs !== undefined) return downloadsNs;
+  try{
+    downloadsNs = (window.claude && typeof window.claude.use==="function")
+      ? await window.claude.use("downloads") : null;
+  }catch(e){ downloadsNs = null; }
+  return downloadsNs;
+}
+async function offerFile(filename, data){
+  const d = await getDownloads();
+  if (d){
+    try{ await d.save({ filename, data }); return "saved"; }
+    catch(err){ if (err && err.code==="declined") return "declined"; }
+  }
+  try{
+    const blob = (data instanceof Blob) ? data : new Blob([data]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    return "local";
+  }catch(e){ return "unavailable"; }
+}
+function saveNote(outcome, filename){
+  if (outcome==="saved")    return `<div class="msg ok">已存檔：${esc(filename)}</div>`;
+  if (outcome==="declined") return `<div class="msg info">已取消存檔。</div>`;
+  return `<div class="msg info">若瀏覽器未自動下載 ${esc(filename)}，請用下方內容自行存檔。</div>`;
+}
+async function composeCanvas(){
+  const d = clone(curDraft());               // 固定這次輸出的內容
+  const { img } = await loadImage(d.template.asset.src);
+  const plan = buildPlan(d, { original:false });
+  await (document.fonts?.ready || Promise.resolve());
+  return planToCanvas(plan, img);
+}
+
+function preflight(){
+  const r = validateForOutput(curDraft());
+  if (!r.ok){
+    openModal("尚未完成必填尺寸",
+      `<div class="msg warn">以下必填欄位空白，無法輸出：<ul>${r.missing.map(m=>`<li>${esc(m)}</li>`).join("")}</ul></div>`,
+      `<button class="btn" type="button" id="pfOk">回去填寫</button>`);
+    $("pfOk").addEventListener("click", closeModal);
+    return null;
+  }
+  return r;
+}
+
+async function exportPNG(){
+  if (busyExport) return;
+  const r = preflight(); if (!r) return;
+  busyExport = true; $("pngBtn").disabled = true;
+  try{
+    const cv = await composeCanvas();
+    let url, blob;
+    try {
+      url = cv.toDataURL("image/png");
+      blob = await new Promise(res=> cv.toBlob(res, "image/png"));
+    }
+    catch(e){ toast("無法輸出圖檔：瀏覽器封鎖了畫布讀取。若為本機開啟，請改用本機伺服器（python3 -m http.server）。","warn"); return; }
+    const name = ((curDraft().info.drawNo||"drawing")+"_"+(curDraft().info.rev||"R0")+".png").replace(/\s+/g,"");
+    const outcome = await offerFile(name, blob || url);
+    openModal("PNG 已產生",
+      (r.warnings.length?`<div class="msg warn">${r.warnings.map(esc).join("<br>")}</div>`:``)+
+      saveNote(outcome, name)+
+      `<div class="msg info">解析度 ${cv.width} × ${cv.height}。也可以在下方圖片上按右鍵／長按另存。</div>`+
+      `<img src="${url}" alt="輸出預覽">`,
+      `<button class="btn" type="button" id="exOk">關閉</button>`);
+    $("exOk").addEventListener("click", closeModal);
+  }catch(err){
+    toast("合成失敗："+(err&&err.message?err.message:"未知錯誤"),"warn");
+  }finally{
+    busyExport=false; $("pngBtn").disabled=false;
+  }
+}
+
+async function printSheet(){
+  if (busyExport) return;
+  const r = preflight(); if (!r) return;
+  busyExport = true; $("printBtn").disabled = true;
+  try{
+    const cv = await composeCanvas();
+    let url; try{ url = cv.toDataURL("image/png"); }
+    catch(e){ toast("無法列印：瀏覽器封鎖了畫布讀取。請改用本機伺服器開啟。","warn"); return; }
+    const landscape = cv.width > cv.height;
+    let st = document.getElementById("printPage");
+    if (!st){ st=document.createElement("style"); st.id="printPage"; document.head.appendChild(st); }
+    st.textContent = `@page{ size:A4 ${landscape?"landscape":"portrait"}; margin:8mm; }`;
+    $("printArea").innerHTML = `<img src="${url}" alt="">`;
+    const img = $("printArea").querySelector("img");
+    await new Promise(res=>{ if (img.complete) res(); else img.onload=res; });
+    window.print();
+  }catch(err){
+    toast("合成失敗："+(err&&err.message?err.message:"未知錯誤"),"warn");
+  }finally{
+    busyExport=false; $("printBtn").disabled=false;
+  }
+}
+
+/* ==========================================================================
+   12. 備份 / 匯入
+   ========================================================================== */
+async function exportBackup(){
+  const payload = { formatVersion:FORMAT_VERSION, exportedAt:now(),
+    templates:ws.templates, drafts:ws.drafts, saved:ws.saved, ui:ws.ui };
+  const json = JSON.stringify(payload,null,2);
+  const name = "tu-workshop-backup-"+new Date().toISOString().slice(0,10)+".json";
+  const outcome = await offerFile(name, json);
+  openModal("備份資料",
+    saveNote(outcome, name)+
+    `<div class="msg info">備份含範本、草稿、已存圖面與畫面狀態，<b>不含底圖 JPG</b>。換電腦時請一併保留整個專案資料夾。</div>`+
+    `<textarea id="bkText" readonly>${esc(json)}</textarea>`,
+    `<button class="btn" type="button" id="bkCopy">複製到剪貼簿</button><button class="btn primary" type="button" id="bkOk">關閉</button>`);
+  $("bkOk").addEventListener("click", closeModal);
+  $("bkCopy").addEventListener("click", async ()=>{
+    const ta=$("bkText"); ta.select();
+    try{ await navigator.clipboard.writeText(ta.value); $("bkCopy").textContent="已複製"; }
+    catch(e){ document.execCommand?.("copy"); $("bkCopy").textContent="已複製"; }
+  });
+}
+
+function validateBackup(obj){
+  const err = [];
+  if (!obj || typeof obj!=="object") return ["檔案內容不是有效的 JSON 物件"];
+  if (obj.formatVersion!==FORMAT_VERSION) err.push("格式版本不符（需要 "+FORMAT_VERSION+"）");
+  if (!obj.templates || typeof obj.templates!=="object") err.push("缺少 templates");
+  if (!obj.drafts || typeof obj.drafts!=="object") err.push("缺少 drafts");
+  if (!Array.isArray(obj.saved)) err.push("saved 必須是陣列");
+  if (err.length) return err;
+  Object.values(obj.templates).forEach(t=>{
+    if (!t.asset || !t.asset.src) err.push("範本 "+(t.id||"?")+" 缺少底圖引用");
+    if (!Array.isArray(t.fields)) { err.push("範本 "+(t.id||"?")+" 欄位格式錯誤"); return; }
+    t.fields.forEach(f=>{
+      if (!f.id || !f.mask || !f.text) err.push("範本 "+t.id+" 的欄位資料不完整");
+      else if ([f.mask.x,f.mask.y,f.mask.w,f.mask.h,f.text.x,f.text.y].some(n=>typeof n!=="number" || !isFinite(n)))
+        err.push("範本 "+t.id+" 欄位 "+f.id+" 座標不是有效數字");
+    });
+  });
+  obj.saved.forEach((s,i)=>{
+    if (!s || !s.draft || !s.draft.template) err.push("第 "+(i+1)+" 筆已存圖面結構不完整");
+  });
+  return err;
+}
+
+function importBackupText(text){
+  let obj;
+  try{ obj = JSON.parse(text); }
+  catch(e){ toast("無法解析 JSON："+e.message,"warn"); return; }
+  const errs = validateBackup(obj);
+  if (errs.length){
+    openModal("備份格式不符，未匯入",
+      `<div class="msg warn"><ul>${errs.slice(0,10).map(e=>`<li>${esc(e)}</li>`).join("")}</ul></div>`,
+      `<button class="btn" type="button" id="ivOk">關閉</button>`);
+    $("ivOk").addEventListener("click", closeModal);
+    return;
+  }
+  openModal("確認匯入",
+    `<div class="msg warn">這是整批取代，不是合併匯入。目前工作區的範本、草稿與已存圖面都會被覆蓋（本次頁面工作階段內可復原）。</div>`+
+    `<div class="msg info">將匯入：範本 ${Object.keys(obj.templates).length} 筆 · 草稿 ${Object.keys(obj.drafts).length} 筆 · 已存圖面 ${obj.saved.length} 筆</div>`,
+    `<button class="btn" type="button" id="imCancel">取消</button><button class="btn primary" type="button" id="imOk">取代工作區</button>`);
+  $("imCancel").addEventListener("click", closeModal);
+  $("imOk").addEventListener("click", ()=>{
+    checkpoint();
+    ws = { formatVersion:FORMAT_VERSION, templates:obj.templates, drafts:obj.drafts, saved:obj.saved,
+      ui: Object.assign({ currentTemplateId:Object.keys(obj.templates)[0], mode:"fill", selectedFieldId:null,
+        category:"全部", zoom:1, compare:false }, obj.ui||{}) };
+    if (!ws.templates[ws.ui.currentTemplateId]) ws.ui.currentTemplateId = Object.keys(ws.templates)[0];
+    if (!ws.drafts[ws.ui.currentTemplateId]) ws.drafts[ws.ui.currentTemplateId] = newDraft(ws.templates[ws.ui.currentTemplateId]);
+    ws.ui.compare=false;
+    imageCache.clear();
+    closeModal(); renderAll(); scheduleSave();
+    toast("已匯入備份。","ok");
+  });
+}
+
+function openImport(){
+  openModal("匯入備份",
+    `<div class="msg info">選擇備份 JSON 檔，或直接貼上內容。匯入會先檢查格式與座標，通過後才要求確認。</div>`+
+    `<button class="btn" type="button" id="imPick">選擇備份檔…</button>`+
+    `<div style="margin-top:10px"><label for="imText">或貼上備份 JSON</label><textarea id="imText"></textarea></div>`,
+    `<button class="btn" type="button" id="imClose2">取消</button><button class="btn primary" type="button" id="imPaste">檢查並匯入</button>`);
+  $("imClose2").addEventListener("click", closeModal);
+  $("imPick").addEventListener("click", ()=> $("fileInput").click());
+  $("imPaste").addEventListener("click", ()=>{
+    const t=$("imText").value.trim();
+    if (!t){ $("imText").focus(); return; }
+    importBackupText(t);
+  });
+}
+$("fileInput").addEventListener("change", async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  e.target.value="";
+  if (!f) return;
+  if (f.size > 12*1024*1024){ toast("備份檔超過 12MB，已拒絕匯入。","warn"); return; }
+  importBackupText(await f.text());
+});
+
+/* ==========================================================================
+   13. 事件綁定與啟動
+   ========================================================================== */
+$("tabFill").addEventListener("click", ()=>{ if(ws.ui.mode==="fill")return; ws.ui.mode="fill"; cancelMarquee(); renderPanel(); renderPreview(); scheduleSave(); });
+$("tabSet").addEventListener("click", ()=>{ if(ws.ui.mode==="set")return; ws.ui.mode="set"; renderPanel(); renderPreview(); scheduleSave(); });
+$("catFilter").addEventListener("change", (e)=>{ ws.ui.category=e.target.value; renderTemplateList(); scheduleSave(); });
+$("compareChk").addEventListener("change", (e)=>{ ws.ui.compare=e.target.checked; renderPreview(); renderBadges(); scheduleSave(); });
+$("zoomIn").addEventListener("click", ()=>{ ws.ui.zoom=Math.min(2, +(ws.ui.zoom+0.25).toFixed(2)); renderPreview(); scheduleSave(); });
+$("zoomOut").addEventListener("click", ()=>{ ws.ui.zoom=Math.max(0.5, +(ws.ui.zoom-0.25).toFixed(2)); renderPreview(); scheduleSave(); });
+$("zoomFit").addEventListener("click", ()=>{ ws.ui.zoom=1; renderPreview(); scheduleSave(); });
+$("undoBtn").addEventListener("click", undo);
+$("backupBtn").addEventListener("click", exportBackup);
+$("importBtn").addEventListener("click", openImport);
+$("saveSnapBtn").addEventListener("click", saveSnapshot);
+$("openSnapBtn").addEventListener("click", openSnapshots);
+$("pngBtn").addEventListener("click", exportPNG);
+$("printBtn").addEventListener("click", printSheet);
+
+(async function boot(){
+  try{
+    const saved = await store.get();
+    if (saved && saved.formatVersion===FORMAT_VERSION && saved.templates && Object.keys(saved.templates).length){
+      ws = saved;
+      if (!ws.templates[ws.ui?.currentTemplateId]) ws.ui.currentTemplateId = Object.keys(ws.templates)[0];
+      ws.ui.compare = false;
+      setSaveState("saved","已保存到本機");
+    } else {
+      setSaveState("idle","尚未保存");
+    }
+  }catch(e){
+    setSaveState("error","本機保存無法使用");
+  }
+  renderAll();
+  $("undoBtn").disabled = true;
+})();
+
+})();
+</script>
