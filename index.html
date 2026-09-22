@@ -316,8 +316,9 @@
         <button class="btn sm primary" id="addTplBtn" type="button">＋ 底圖</button>
       </span>
     </header>
-    <div class="filter-row">
-      <select id="catFilter" aria-label="類型篩選"></select>
+    <div class="filter-row g2">
+      <select id="machineFilter" aria-label="車台篩選"></select>
+      <select id="partFilter" aria-label="類型篩選"></select>
     </div>
     <ul class="tpl-list" id="tplList"></ul>
   </section>
@@ -482,6 +483,12 @@ const SEED = [
   }
 ];
 
+// 分類選項：要增減直接改這兩個陣列
+const MACHINES   = ["10B","13B","17B","17BL","19B","30B"];
+const PART_TYPES = ["母模","沖模","沖棒","沖針","配件"];
+// 標註前綴：[存進資料的值, 顯示文字]
+const PREFIXES   = [["","無"], ["Ø","Ø"], ["R","R"], ["C","C"]];
+
 const FORMAT_VERSION = 1;
 const MIN_MARQUEE = 12;          // 原圖像素：低於此值不建立欄位
 const UNDO_LIMIT  = 60;
@@ -510,7 +517,8 @@ function newDraft(tpl){
 }
 function freshWorkspace(){
   const ws = { formatVersion:FORMAT_VERSION, templates:{}, drafts:{}, saved:[],
-    ui:{ currentTemplateId:SEED[0].id, mode:"fill", selectedFieldId:null, category:"全部", zoom:1, compare:false } };
+    ui:{ currentTemplateId:SEED[0].id, mode:"fill", selectedFieldId:null,
+         machineFilter:"", partFilter:"", zoom:1, compare:false } };
   SEED.forEach(s=>{
     const t = buildTemplate(s);
     ws.templates[t.id] = t;
@@ -904,17 +912,31 @@ function validateForOutput(draft){
    ========================================================================== */
 const $ = (id)=> document.getElementById(id);
 
+// 顯示用的分類文字：新範本用車台＋類型，舊資料仍用 typeGroup
+function groupLabel(t){
+  const bits = [t.machine, t.partType].filter(Boolean);
+  return bits.length ? bits.join(" · ") : (t.typeGroup || "未分類");
+}
+
 function renderCategories(){
-  const cats = ["全部", ...Array.from(new Set(Object.values(ws.templates).map(t=>t.typeGroup)))];
-  const sel = $("catFilter");
-  sel.innerHTML = cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
-  sel.value = cats.includes(ws.ui.category) ? ws.ui.category : "全部";
+  const opts = (list, cur, allLabel)=>
+    [`<option value="">${allLabel}</option>`]
+      .concat(list.map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v)}</option>`))
+      .join("");
+  const used = (key)=> Array.from(new Set(
+    Object.values(ws.templates).map(t=>t[key]).filter(Boolean)));
+  // 選項＝預設清單 ∪ 資料裡實際出現過的值（匯入別人的備份時才不會漏）
+  const machines = Array.from(new Set(MACHINES.concat(used("machine"))));
+  const parts    = Array.from(new Set(PART_TYPES.concat(used("partType"))));
+  $("machineFilter").innerHTML = opts(machines, ws.ui.machineFilter||"", "全部車台");
+  $("partFilter").innerHTML    = opts(parts,    ws.ui.partFilter||"",    "全部類型");
 }
 
 function renderTemplateList(){
   const list = $("tplList");
-  const cat = ws.ui.category;
-  const items = Object.values(ws.templates).filter(t=> cat==="全部" || t.typeGroup===cat);
+  const mf = ws.ui.machineFilter||"", pf = ws.ui.partFilter||"";
+  const items = Object.values(ws.templates).filter(t=>
+    (!mf || t.machine===mf) && (!pf || t.partType===pf));
   $("tplCount").textContent = items.length + " 張";
   list.innerHTML = "";
   items.forEach(t=>{
@@ -926,7 +948,7 @@ function renderTemplateList(){
     b.innerHTML =
       `<img alt=""${upload ? "" : ` src="${esc(t.asset.src)}"`}>` +
       `<span><span class="name">${esc(t.name)}</span><br>` +
-      `<span class="meta">${esc(t.typeGroup)}</span><br>` +
+      `<span class="meta">${esc(groupLabel(t))}</span><br>` +
       `<span class="count">可填尺寸 ${t.fields.length}</span></span>`;
     if (upload){   // upload: 不是瀏覽器認得的網址，要先解析成 data URI
       const im = b.querySelector("img");
@@ -1069,6 +1091,31 @@ function renderSetPanel(){
     `</div>`;
   host.appendChild(bar);
 
+  // 範本識別資訊：直接寫回主檔，不必等「保存範本新版」
+  const master = ws.templates[d.templateId] || tpl;
+  const idbox = document.createElement("div");
+  idbox.className = "set-block";
+  idbox.innerHTML =
+    `<div class="hd"><span class="t">範本資訊</span></div>`+
+    `<div class="set-body">`+
+      `<div><label for="tpl-name">圖面名稱／圖號</label><input id="tpl-name" type="text" value="${esc(master.name||"")}"></div>`+
+      `<div class="g2">`+
+        `<div><label for="tpl-machine">車台</label><select id="tpl-machine">${selectOptions(MACHINES, master.machine||"", "（未指定）")}</select></div>`+
+        `<div><label for="tpl-part">類型</label><select id="tpl-part">${selectOptions(PART_TYPES, master.partType||"", "（未指定）")}</select></div>`+
+      `</div>`+
+    `</div>`;
+  host.appendChild(idbox);
+  const writeIdentity = (key, val)=>{
+    checkpoint();
+    const m = ws.templates[curDraft().templateId];
+    if (m) m[key] = val;
+    draftTpl()[key] = val;            // 草稿副本同步，預覽標題才會跟著變
+    renderTemplateList(); renderCategories(); renderPreview(); scheduleSave();
+  };
+  $("tpl-name").addEventListener("change", (e)=> writeIdentity("name", e.target.value.trim()));
+  $("tpl-machine").addEventListener("change", (e)=> writeIdentity("machine", e.target.value));
+  $("tpl-part").addEventListener("change", (e)=> writeIdentity("partType", e.target.value));
+
   $("marqueeBtn").addEventListener("click", ()=> startMarquee("field"));
   $("maskOnlyBtn").addEventListener("click", ()=> startMarquee("mask"));
   $("frameBtn").addEventListener("click", ()=> startMarquee("frame"));
@@ -1103,7 +1150,7 @@ function renderSetPanel(){
           `<div><label for="s-unit-${f.id}">單位</label><input id="s-unit-${f.id}" type="text" value="${esc(f.unit)}"></div>`+
         `</div>`+
         `<div class="g3">`+
-          `<div><label for="s-prefix-${f.id}">前綴</label><input id="s-prefix-${f.id}" type="text" value="${esc(f.prefix)}"></div>`+
+          `<div><label for="s-prefix-${f.id}">前綴</label><select id="s-prefix-${f.id}">${prefixOptions(f.prefix)}</select></div>`+
           `<div><label for="s-default-${f.id}">預設尺寸</label><input id="s-default-${f.id}" type="text" value="${esc(f.defaultValue)}"></div>`+
           `<div><label for="s-font-${f.id}">字級(px)</label><input id="s-font-${f.id}" type="number" min="8" max="120" value="${f.fontSize}"></div>`+
         `</div>`+
@@ -1152,11 +1199,16 @@ function wireFieldSettings(f){
   const tplField = ()=> draftTpl().fields.find(x=>x.id===f.id);
   const num = (el)=>{ const n=parseFloat(el.value); return isFinite(n)?n:null; };
 
-  const textBinds = [["s-label-","label"],["s-unit-","unit"],["s-prefix-","prefix"]];
-  textBinds.forEach(([p,key])=>{
+  [["s-label-","label"],["s-unit-","unit"]].forEach(([p,key])=>{
     const el=$(p+f.id); if(!el) return;
     el.addEventListener("focus", checkpoint);
     el.addEventListener("input", ()=>{ tplField()[key]=el.value; renderPreview(); scheduleSave(); });
+  });
+  const pfxEl = $("s-prefix-"+f.id);
+  pfxEl.addEventListener("change", ()=>{
+    checkpoint();
+    tplField().prefix = pfxEl.value;
+    updateFieldDOM(f.id); renderOverlay(); scheduleSave();
   });
 
   // 預設值／預設公差：同時更新目前草稿（規格 §5）
@@ -1804,7 +1856,7 @@ function openNewFieldDialog(det){
         `<div><label for="nf-id">欄位識別碼</label><input id="nf-id" type="text" placeholder="例如：D_in"></div>`+
       `</div>`+
       `<div class="g3">`+
-        `<div><label for="nf-prefix">前綴</label><input id="nf-prefix" type="text" placeholder="Ø / R"></div>`+
+        `<div><label for="nf-prefix">前綴</label><select id="nf-prefix">${prefixOptions("")}</select></div>`+
         `<div><label for="nf-unit">單位</label><input id="nf-unit" type="text" value="mm"></div>`+
         `<div><label for="nf-font">字級(px)</label><input id="nf-font" type="number" value="${det.fontSize}" min="8" max="120"></div>`+
       `</div>`+
@@ -1868,8 +1920,20 @@ function openNewFieldDialog(det){
    ========================================================================== */
 const MAX_UPLOAD = 25*1024*1024;
 
+// 前綴下拉：資料裡若有清單外的舊值，保留成一個選項免得被改掉
+function prefixOptions(cur){
+  const opts = PREFIXES.slice();
+  if (cur && !opts.some(([v])=> v===cur)) opts.push([cur, cur]);
+  return opts.map(([v,label])=>
+    `<option value="${esc(v)}"${v===(cur||"")?" selected":""}>${esc(label)}</option>`).join("");
+}
+
+const selectOptions = (list, cur, blank)=>
+  [`<option value="">${esc(blank)}</option>`]
+    .concat(list.map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v)}</option>`))
+    .join("");
+
 function openAddTemplate(){
-  const groups = Array.from(new Set(Object.values(ws.templates).map(t=>t.typeGroup)));
   openModal("新增底圖",
     `<div class="msg info">選一張圖面當底圖，建立一筆新範本。建立後用「設定範本 → 框選新尺寸」`+
     `逐一建立可填欄位，不需要改程式。<br>`+
@@ -1877,10 +1941,10 @@ function openAddTemplate(){
     `<div class="set-body" style="padding:0">`+
       `<button class="btn" type="button" id="atPick">選擇圖檔…</button>`+
       `<div class="prefix-hint" id="atFileInfo">尚未選擇檔案</div>`+
+      `<div><label for="at-name">圖面名稱／圖號</label><input id="at-name" type="text" placeholder="例如 B-K01-5.40x73"></div>`+
       `<div class="g2">`+
-        `<div><label for="at-name">圖面名稱／圖號</label><input id="at-name" type="text" placeholder="例如 D4P001000003"></div>`+
-        `<div><label for="at-group">類型群組</label><input id="at-group" type="text" list="atGroups" placeholder="例如 錐尖頂針 P">`+
-          `<datalist id="atGroups">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>`+
+        `<div><label for="at-machine">車台</label><select id="at-machine">${selectOptions(MACHINES,"","（未指定）")}</select></div>`+
+        `<div><label for="at-part">類型</label><select id="at-part">${selectOptions(PART_TYPES,"","（未指定）")}</select></div>`+
       `</div>`+
       `<div><label for="at-material">材質（填入試作圖框）</label><input id="at-material" type="text" placeholder="例如 碳化鎢 VA70 1PC ／ 模殼 SKD11 1PC"></div>`+
     `</div>`,
@@ -1923,13 +1987,13 @@ function openAddTemplate(){
   $("atOk").addEventListener("click", async ()=>{
     if (!picked) return;
     const name = ($("at-name").value.trim() || picked.name.replace(/\.[^.]+$/,""));
-    const group = $("at-group").value.trim() || "未分類";
+    const machine = $("at-machine").value, partType = $("at-part").value;
     const uploadId = uid("img");
     try{ await store.putUpload(uploadId, picked.blob); }
     catch(err){ toast("圖檔存入本機失敗："+(err&&err.message||"未知錯誤"),"warn"); return; }
     checkpoint();
     const t = {
-      id: uid("tpl"), name, typeGroup: group, typeCode: "",
+      id: uid("tpl"), name, machine, partType, typeGroup: "", typeCode: "",
       asset: { src:"upload:"+uploadId, w:picked.w, h:picked.h },
       info: { drawNo:name, material:$("at-material").value.trim(), rev:"R0", note:"" },
       // 預設圖框放在圖面下緣，之後可用「框選圖框範圍」調整
@@ -1941,7 +2005,7 @@ function openAddTemplate(){
     ws.drafts[t.id] = newDraft(t);
     ws.ui.currentTemplateId = t.id;
     ws.ui.selectedFieldId = null;
-    ws.ui.category = "全部";
+    ws.ui.machineFilter = ""; ws.ui.partFilter = "";
     ws.ui.mode = "set";
     closeModal(); renderAll(); scheduleSave();
     toast("範本已建立。接著用「框選新尺寸」建立可填欄位，並用「框選圖框範圍」確認試作圖框的位置。","ok");
@@ -2236,7 +2300,7 @@ function importBackupText(text){
     checkpoint();
     ws = { formatVersion:FORMAT_VERSION, templates:obj.templates, drafts:obj.drafts, saved:obj.saved,
       ui: Object.assign({ currentTemplateId:Object.keys(obj.templates)[0], mode:"fill", selectedFieldId:null,
-        category:"全部", zoom:1, compare:false }, obj.ui||{}) };
+        machineFilter:"", partFilter:"", zoom:1, compare:false }, obj.ui||{}) };
     if (!ws.templates[ws.ui.currentTemplateId]) ws.ui.currentTemplateId = Object.keys(ws.templates)[0];
     if (!ws.drafts[ws.ui.currentTemplateId]) ws.drafts[ws.ui.currentTemplateId] = newDraft(ws.templates[ws.ui.currentTemplateId]);
     ws.ui.compare=false;
@@ -2274,7 +2338,8 @@ $("fileInput").addEventListener("change", async (e)=>{
 $("tabFill").addEventListener("click", ()=>{ if(ws.ui.mode==="fill")return; ws.ui.mode="fill"; cancelMarquee(); renderPanel(); renderPreview(); scheduleSave(); });
 $("tabSet").addEventListener("click", ()=>{ if(ws.ui.mode==="set")return; ws.ui.mode="set"; renderPanel(); renderPreview(); scheduleSave(); });
 $("addTplBtn").addEventListener("click", openAddTemplate);
-$("catFilter").addEventListener("change", (e)=>{ ws.ui.category=e.target.value; renderTemplateList(); scheduleSave(); });
+$("machineFilter").addEventListener("change", (e)=>{ ws.ui.machineFilter=e.target.value; renderTemplateList(); scheduleSave(); });
+$("partFilter").addEventListener("change", (e)=>{ ws.ui.partFilter=e.target.value; renderTemplateList(); scheduleSave(); });
 $("compareChk").addEventListener("change", (e)=>{ ws.ui.compare=e.target.checked; renderPreview(); renderBadges(); scheduleSave(); });
 $("zoomIn").addEventListener("click", ()=> setZoom(ws.ui.zoom+0.25));
 $("zoomOut").addEventListener("click", ()=> setZoom(ws.ui.zoom-0.25));
